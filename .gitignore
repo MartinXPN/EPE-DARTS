@@ -3,6 +3,8 @@ checkpoints/
 
 # Ignore all the experiments
 experiments/
+searchs/
+augments/
 
 # Aim
 .aim/

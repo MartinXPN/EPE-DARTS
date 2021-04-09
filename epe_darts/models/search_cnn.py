@@ -1,11 +1,14 @@
 """ CNN for architecture search """
+import logging
+
 import torch
 import torch.nn as nn
-from epe_darts.models.search_cells import SearchCell
-from epe_darts import genotypes as gt
-from torch.nn.parallel._functions import Broadcast
+import torch.nn.functional as F
 from entmax import entmax_bisect
-import logging
+from torch.nn.parallel._functions import Broadcast
+
+from epe_darts import genotypes as gt
+from epe_darts.models.search_cells import SearchCell
 
 
 def broadcast_list(l, device_ids):
@@ -79,15 +82,14 @@ class SearchCNN(nn.Module):
 class SearchCNNController(nn.Module):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, C_in, C, n_classes, n_layers, criterion, n_nodes=4, stem_multiplier=3,
-                 device_ids=None, sparsity_range=(1, 8), alpha_normal=None, alpha_reduce=None):
+                 device_ids=None, sparsity=8, alpha_normal=None, alpha_reduce=None):
         super().__init__()
         self.n_nodes = n_nodes
         self.criterion = criterion
         if device_ids is None:
             device_ids = list(range(torch.cuda.device_count()))
         self.device_ids = device_ids
-        self.sparsity_range = sparsity_range
-        self.current_sparsity = sparsity_range[0]
+        self.sparsity = sparsity
 
         # initialize architect parameters: alphas
         n_ops = len(gt.PRIMITIVES)
@@ -113,25 +115,13 @@ class SearchCNNController(nn.Module):
 
         self.net = SearchCNN(C_in, C, n_classes, n_layers, n_nodes, stem_multiplier)
 
-    def update_sparsity(self, epoch, warmup, all_epochs):
-        # Linear increase from sparsity_range[0] ---> sparsity_range[1]
-        if epoch <= warmup:
-            self.current_sparsity = self.sparsity_range[0]
-            return
-        self.current_sparsity = self.sparsity_range[1]
-        # epoch -= warmup
-        # all_epochs -= warmup
-        # self.current_sparsity = self.sparsity_range[0] + \
-        #                         (epoch / all_epochs) * (self.sparsity_range[1] - self.sparsity_range[0])
-        print(f'Updated sparsity to: {self.current_sparsity}')
-
     def forward(self, x):
-        # if self.current_sparsity == self.sparsity_range[0]:
-        #     weights_normal = [F.softmax(alpha, dim=-1) for alpha in self.alpha_normal]
-        #     weights_reduce = [F.softmax(alpha, dim=-1) for alpha in self.alpha_reduce]
-        # else:
-        weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.current_sparsity) for alpha in self.alpha_normal]
-        weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.current_sparsity) for alpha in self.alpha_reduce]
+        if self.sparsity == 1:
+            weights_normal = [F.softmax(alpha, dim=-1) for alpha in self.alpha_normal]
+            weights_reduce = [F.softmax(alpha, dim=-1) for alpha in self.alpha_reduce]
+        else:
+            weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_normal]
+            weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_reduce]
 
         if len(self.device_ids) == 1:
             return self.net(x, weights_normal, weights_reduce)
@@ -164,17 +154,13 @@ class SearchCNNController(nn.Module):
         logger.info("####### ALPHA #######")
         logger.info("\n# Alpha - normal")
         for alpha in self.alpha_normal:
-            # if self.current_sparsity == self.sparsity_range[0]:
-            #     logger.info(F.softmax(alpha, dim=-1))
-            # else:
-            logger.info(entmax_bisect(alpha, dim=-1, alpha=self.current_sparsity))
+            logger.info(F.softmax(alpha, dim=-1) if self.sparsity == 1 else
+                        entmax_bisect(alpha, dim=-1, alpha=self.sparsity))
 
         logger.info("\n# Alpha - reduce")
         for alpha in self.alpha_reduce:
-            # if self.current_sparsity == self.sparsity_range[0]:
-            #     logger.info(F.softmax(alpha, dim=-1))
-            # else:
-            logger.info(entmax_bisect(alpha, dim=-1, alpha=self.current_sparsity))
+            logger.info(F.softmax(alpha, dim=-1) if self.sparsity == 1 else
+                        entmax_bisect(alpha, dim=-1, alpha=self.sparsity))
         logger.info("#####################")
 
         # restore formats

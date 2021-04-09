@@ -8,13 +8,13 @@ Adjust the batch size if out of memory (OOM) occurs. It dependes on your gpu mem
 
 - Search
 ```shell
-python search.py --name cifar10 --dataset cifar10
+python -m epe_darts.search --name cifar10 --dataset cifar10
 ```
 
 - Augment
 ```shell
 # genotype from search results
-python augment.py --name cifar10 --dataset cifar10 --genotype "Genotype(
+python -m epe_darts.augment --name cifar10 --dataset cifar10 --genotype "Genotype(
     normal=[[('sep_conv_3x3', 0), ('dil_conv_5x5', 1)], [('skip_connect', 0), ('dil_conv_3x3', 2)], [('sep_conv_3x3', 1), ('skip_connect', 0)], [('sep_conv_3x3', 1), ('skip_connect', 0)]],
     normal_concat=range(2, 6),
     reduce=[[('max_pool_3x3', 0), ('max_pool_3x3', 1)], [('max_pool_3x3', 0), ('skip_connect', 2)], [('skip_connect', 3), ('max_pool_3x3', 0)], [('skip_connect', 2), ('max_pool_3x3', 0)]],
@@ -28,16 +28,14 @@ python augment.py --name cifar10 --dataset cifar10 --genotype "Genotype(
 This project supports multi-gpu. The larger batch size and learning rate are required to take advantage of multi-gpu.
 
 - Search
-
-```
+```shell
 python search.py --name cifar10-mg --dataset cifar10 --gpus 0,1,2,3 \
     --batch_size 256 --workers 16 --print_freq 10 \
     --w_lr 0.1 --w_lr_min 0.004 --alpha_lr 0.0012
 ```
 
 - Augment
-
-```
+```shell
 python augment.py --name cifar10-mg --dataset cifar10 --gpus 0,1,2,3 \
     --batch_size 384 --workers 16 --print_freq 50 --lr 0.1 \
     --genotype "Genotype(

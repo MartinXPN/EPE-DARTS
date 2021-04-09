@@ -42,7 +42,7 @@ def main():
 
     net_crit = nn.CrossEntropyLoss().to(device)
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
-                                net_crit, device_ids=config.gpus, sparsity_range=(6, 6),
+                                net_crit, device_ids=config.gpus, sparsity=8,
                                 alpha_normal=torch.load(config.alpha_normal_path) if config.alpha_normal_path else None,
                                 alpha_reduce=torch.load(config.alpha_reduce_path) if config.alpha_reduce_path else None)
     model = model.to(device)
@@ -83,7 +83,6 @@ def main():
         model.print_alphas(logger)
 
         # training
-        model.update_sparsity(epoch=epoch, warmup=-1, all_epochs=config.epochs)
         train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch)
 
         # validation
