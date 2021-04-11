@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import trange
 
 from epe_darts import utils
-from epe_darts.models.search_cnn import SearchCNNController
+from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed
 
 fix_random_seed(42, fix_cudnn=True)
@@ -91,7 +91,7 @@ class EPESearch:
         return SearchCNNController(C_in=self.input_channels, C=self.init_channels,
                                    n_classes=self.n_classes, n_layers=self.nb_layers,
                                    criterion=net_crit, sparsity=self.sparsity,
-                                   alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
+                                   alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(self.device)
 
     def evaluate_architecture(self, alpha_normal: nn.ParameterList, alpha_reduce: nn.ParameterList,
                               data_iterator, nb_runs: int) -> List[float]:
@@ -107,7 +107,6 @@ class EPESearch:
             # print('alpha_reduce:')
             # [print(alpha) for alpha in alpha_reduce]
             network = self.create_net(alpha_normal, alpha_reduce)
-            network = network.to(self.device)
             x, target = next(data_iterator)
             x = x.to(self.device)
 

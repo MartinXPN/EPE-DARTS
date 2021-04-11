@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 from tensorboardX import SummaryWriter
-from config import AugmentConfig
-import utils
-from models.augment_cnn import AugmentCNN
+from epe_darts.config import AugmentConfig
+from epe_darts import utils
+from epe_darts.augment_cnn import AugmentCNN
 
 
 config = AugmentConfig()

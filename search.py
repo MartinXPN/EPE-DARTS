@@ -1,15 +1,16 @@
 """ Search cell """
 import os
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 from tensorboardX import SummaryWriter
-from config import SearchConfig
-import utils
-from models.search_cnn import SearchCNNController
-from architect import Architect
-from visualize import plot
 
+from epe_darts import utils
+from epe_darts.architect import Architect
+from epe_darts.config import SearchConfig
+from epe_darts.search_cnn import SearchCNNController
+from epe_darts.visualize import plot
 
 config = SearchConfig()
 

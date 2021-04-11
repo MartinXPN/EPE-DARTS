@@ -9,18 +9,18 @@ Adjust the batch size if out of memory (OOM) occurs. It dependes on your gpu mem
 
 - EPE-NAS search
 ```shell
-python -m epe_darts.epe_search --dataset cifar100 - random_search
+python epe_search.py --dataset cifar100 - random_search
 ```
 
 - Search
 ```shell
-python -m epe_darts.search --name cifar10 --dataset cifar10
+python search.py --name cifar10 --dataset cifar10
 ```
 
 - Augment
 ```shell
 # genotype from search results
-python -m epe_darts.augment --name cifar10 --dataset cifar10 --genotype "Genotype(
+python augment.py --name cifar10 --dataset cifar10 --genotype "Genotype(
     normal=[[('sep_conv_3x3', 0), ('dil_conv_5x5', 1)], [('skip_connect', 0), ('dil_conv_3x3', 2)], [('sep_conv_3x3', 1), ('skip_connect', 0)], [('sep_conv_3x3', 1), ('skip_connect', 0)]],
     normal_concat=range(2, 6),
     reduce=[[('max_pool_3x3', 0), ('max_pool_3x3', 1)], [('max_pool_3x3', 0), ('skip_connect', 2)], [('skip_connect', 3), ('max_pool_3x3', 0)], [('skip_connect', 2), ('max_pool_3x3', 0)]],

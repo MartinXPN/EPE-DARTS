@@ -7,7 +7,7 @@ import time
 import torch
 import torch.nn as nn
 
-from epe_darts.models.search_cnn import SearchCNNController
+from epe_darts.search_cnn import SearchCNNController
 
 
 parser = argparse.ArgumentParser()
