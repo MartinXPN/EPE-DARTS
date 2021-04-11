@@ -75,7 +75,7 @@ class EPESearch:
     sparsity: float = 4
     workers: int = 4
     data_path: Path = Path('datasets')
-    save_path: Path = Path('scores')
+    save_path: Path = Path('analysis')
 
     def __post_init__(self):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

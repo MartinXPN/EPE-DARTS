@@ -9,8 +9,7 @@ augments/
 # Aim
 .aim/
 
-# Ignore ipython notebooks
-*.ipynb
+analysis/*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
