@@ -4,6 +4,8 @@
     - dag: real ops (can be mixed or discrete, but Genotype has only discrete information itself)
 """
 from collections import namedtuple
+from typing import List, Tuple
+
 import torch
 import torch.nn as nn
 from epe_darts import ops
@@ -22,7 +24,7 @@ PRIMITIVES = [
 ]
 
 
-def to_dag(C_in, gene, reduction):
+def to_dag(C_in: int, gene: List[List[Tuple[str, int]]], reduction):
     """ generate discrete ops from gene """
     dag = nn.ModuleList()
     for edges in gene:
@@ -43,7 +45,7 @@ def to_dag(C_in, gene, reduction):
     return dag
 
 
-def from_str(s):
+def from_str(s: str) -> Genotype:
     """ generate genotype from string
     e.g. "Genotype(
             normal=[[('sep_conv_3x3', 0), ('sep_conv_3x3', 1)],
@@ -57,13 +59,10 @@ def from_str(s):
                     [('max_pool_3x3', 0), ('skip_connect', 2)]],
             reduce_concat=range(2, 6))"
     """
-
-    genotype = eval(s)
-
-    return genotype
+    return eval(s)
 
 
-def parse(alpha, k):
+def parse(alpha: nn.ParameterList, k: int) -> List[List[Tuple[str, int]]]:
     """
     parse continuous alpha to discrete gene.
     alpha is ParameterList:

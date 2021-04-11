@@ -172,7 +172,7 @@ class SearchCNNController(nn.Module):
             org_formatters.append(handler.formatter)
             handler.setFormatter(logging.Formatter("%(message)s"))
 
-        logger.info(f'Sparsity: {self.current_sparsity}')
+        logger.info(f'Sparsity: {self.sparsity}')
         logger.info("####### ALPHA #######")
         logger.info("\n# Alpha - normal")
         for alpha in self.alpha_normal:

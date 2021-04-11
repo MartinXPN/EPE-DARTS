@@ -1,7 +1,7 @@
 """ Network architecture visualizer using graphviz """
 import sys
 from graphviz import Digraph
-import genotypes as gt
+from epe_darts import genotypes as gt
 
 
 def plot(genotype, file_path, caption=None):

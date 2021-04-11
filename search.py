@@ -1,7 +1,6 @@
 """ Search cell """
 import os
 
-import numpy as np
 import torch
 import torch.nn as nn
 from tensorboardX import SummaryWriter
@@ -10,6 +9,7 @@ from epe_darts import utils
 from epe_darts.architect import Architect
 from epe_darts.config import SearchConfig
 from epe_darts.search_cnn import SearchCNNController
+from epe_darts.utils import fix_random_seed
 from epe_darts.visualize import plot
 
 config = SearchConfig()
@@ -31,21 +31,16 @@ def main():
     torch.cuda.set_device(config.gpus[0])
 
     # set seed
-    np.random.seed(config.seed)
-    torch.manual_seed(config.seed)
-    torch.cuda.manual_seed_all(config.seed)
-
-    torch.backends.cudnn.benchmark = True
+    fix_random_seed(config.seed)
 
     # get data with meta info
     input_size, input_channels, n_classes, train_data = utils.get_data(
         config.dataset, config.data_path, cutout_length=0, validation=False)
 
+    alpha_normal, alpha_reduce = torch.load(config.alphas_path) if config.alphas_path else (None, None)
     net_crit = nn.CrossEntropyLoss().to(device)
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
-                                net_crit, sparsity=4,
-                                alpha_normal=torch.load(config.alpha_normal_path) if config.alpha_normal_path else None,
-                                alpha_reduce=torch.load(config.alpha_reduce_path) if config.alpha_reduce_path else None)
+                                net_crit, sparsity=4, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
     model = model.to(device)
 
     # weights optimizer

@@ -3,6 +3,7 @@ checkpoints/
 
 # Ignore all the experiments
 experiments/
+datasets/
 searchs/
 augments/
 
