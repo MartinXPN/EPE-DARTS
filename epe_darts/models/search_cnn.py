@@ -123,7 +123,7 @@ class SearchCNNController(nn.Module):
             weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_normal]
             weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_reduce]
 
-        if len(self.device_ids) == 1:
+        if len(self.device_ids) <= 1:
             return self.net(x, weights_normal, weights_reduce)
 
         # scatter x

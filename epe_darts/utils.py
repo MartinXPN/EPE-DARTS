@@ -1,11 +1,22 @@
-""" Utilities """
 import os
 import logging
+import random
 import shutil
 import torch
 import torchvision.datasets as dset
 import numpy as np
-import preproc
+from epe_darts import preproc
+
+
+def fix_random_seed(seed: int = 42, fix_cudnn: bool = True):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+    if fix_cudnn:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = True
 
 
 def get_data(dataset, data_path, cutout_length, validation):
@@ -15,6 +26,9 @@ def get_data(dataset, data_path, cutout_length, validation):
     if dataset == 'cifar10':
         dset_cls = dset.CIFAR10
         n_classes = 10
+    elif dataset == 'cifar100':
+        dset_cls = dset.CIFAR100
+        n_classes = 100
     elif dataset == 'mnist':
         dset_cls = dset.MNIST
         n_classes = 10
@@ -34,7 +48,7 @@ def get_data(dataset, data_path, cutout_length, validation):
     input_size = shape[1]
 
     ret = [input_size, input_channels, n_classes, trn_data]
-    if validation: # append validation data
+    if validation:  # append validation data
         ret.append(dset_cls(root=data_path, train=False, download=True, transform=val_transform))
 
     return ret
@@ -65,7 +79,7 @@ def param_size(model):
     return n_params / 1024. / 1024.
 
 
-class AverageMeter():
+class AverageMeter:
     """ Computes and stores the average and current value """
     def __init__(self):
         self.reset()
