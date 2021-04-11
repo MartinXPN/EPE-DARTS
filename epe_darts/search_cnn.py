@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from entmax import entmax_bisect
-from torch.nn.parallel._functions import Broadcast
 
 from epe_darts import genotypes as gt, ops
 
@@ -57,14 +56,6 @@ class SearchCell(nn.Module):
 
         s_out = torch.cat(states[2:], dim=1)
         return s_out
-
-
-def broadcast_list(l, device_ids):
-    """ Broadcasting list """
-    l_copies = Broadcast.apply(device_ids, *l)
-    l_copies = [l_copies[i:i+len(l)] for i in range(0, len(l_copies), len(l))]
-
-    return l_copies
 
 
 class SearchCNN(nn.Module):
@@ -130,13 +121,10 @@ class SearchCNN(nn.Module):
 class SearchCNNController(nn.Module):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, C_in, C, n_classes, n_layers, criterion, n_nodes=4, stem_multiplier=3,
-                 device_ids=None, sparsity=8, alpha_normal=None, alpha_reduce=None):
+                 sparsity=8, alpha_normal=None, alpha_reduce=None):
         super().__init__()
         self.n_nodes = n_nodes
         self.criterion = criterion
-        if device_ids is None:
-            device_ids = list(range(torch.cuda.device_count()))
-        self.device_ids = device_ids
         self.sparsity = sparsity
 
         # initialize architect parameters: alphas
@@ -171,21 +159,7 @@ class SearchCNNController(nn.Module):
             weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_normal]
             weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_reduce]
 
-        if len(self.device_ids) <= 1:
-            return self.net(x, weights_normal, weights_reduce)
-
-        # scatter x
-        xs = nn.parallel.scatter(x, self.device_ids)
-        # broadcast weights
-        wnormal_copies = broadcast_list(weights_normal, self.device_ids)
-        wreduce_copies = broadcast_list(weights_reduce, self.device_ids)
-
-        # replicate modules
-        replicas = nn.parallel.replicate(self.net, self.device_ids)
-        outputs = nn.parallel.parallel_apply(replicas,
-                                             list(zip(xs, wnormal_copies, wreduce_copies)),
-                                             devices=self.device_ids)
-        return nn.parallel.gather(outputs, self.device_ids[0])
+        return self.net(x, weights_normal, weights_reduce)
 
     def loss(self, X, y):
         logits = self.forward(X)
@@ -218,7 +192,7 @@ class SearchCNNController(nn.Module):
     def genotype(self):
         gene_normal = gt.parse(self.alpha_normal, k=2)
         gene_reduce = gt.parse(self.alpha_reduce, k=2)
-        concat = range(2, 2+self.n_nodes) # concat all intermediate nodes
+        concat = range(2, 2 + self.n_nodes)  # concat all intermediate nodes
 
         return gt.Genotype(normal=gene_normal, normal_concat=concat,
                            reduce=gene_reduce, reduce_concat=concat)

@@ -43,7 +43,7 @@ def main():
 
     net_crit = nn.CrossEntropyLoss().to(device)
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
-                                net_crit, device_ids=config.gpus, sparsity=8,
+                                net_crit, sparsity=4,
                                 alpha_normal=torch.load(config.alpha_normal_path) if config.alpha_normal_path else None,
                                 alpha_reduce=torch.load(config.alpha_reduce_path) if config.alpha_reduce_path else None)
     model = model.to(device)
