@@ -6,6 +6,12 @@ EPE-NAS with DARTS+ for faster Neural Architecture Search
 
 Adjust the batch size if out of memory (OOM) occurs. It dependes on your gpu memory size and genotype.
 
+
+- EPE-NAS search
+```shell
+python -m epe_darts.epe_search --dataset cifar100 - random_search
+```
+
 - Search
 ```shell
 python -m epe_darts.search --name cifar10 --dataset cifar10
@@ -34,7 +40,7 @@ python search.py --name cifar10-mg --dataset cifar10 --gpus 0,1,2,3 \
     --w_lr 0.1 --w_lr_min 0.004 --alpha_lr 0.0012
 ```
 
-- Augment
+- Augmentd
 ```shell
 python augment.py --name cifar10-mg --dataset cifar10 --gpus 0,1,2,3 \
     --batch_size 384 --workers 16 --print_freq 50 --lr 0.1 \
