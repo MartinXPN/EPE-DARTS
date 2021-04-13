@@ -3,18 +3,20 @@ import os
 
 import torch
 import torch.nn as nn
+from pytorch_lightning import Trainer
 from tensorboardX import SummaryWriter
 
 from epe_darts import utils
 from epe_darts.architect import Architect
 from epe_darts.config import SearchConfig
+from epe_darts.early_stopping import RankingChangeEarlyStopping
 from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed
 from epe_darts.visualize import plot
 
 config = SearchConfig()
 
-device = torch.device("cuda")
+device = torch.device(config.gpus[0] if torch.cuda.is_available() else "cpu")
 
 # tensorboard
 writer = SummaryWriter(log_dir=os.path.join(config.path, "tb"))
@@ -26,10 +28,6 @@ config.print_params(logger.info)
 
 def main():
     logger.info("Logger is set - training start")
-
-    # set default gpu device id
-    torch.cuda.set_device(config.gpus[0])
-
     # set seed
     fix_random_seed(config.seed)
 
@@ -42,6 +40,13 @@ def main():
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
                                 net_crit, sparsity=4, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
     model = model.to(device)
+
+    callbacks = [
+        RankingChangeEarlyStopping(monitor_param=param, patience=10)
+        for name, param in model.named_parameters()
+        if 'alpha_normal' in name
+    ]
+    trainer = Trainer(callbacks=callbacks)
 
     # weights optimizer
     w_optim = torch.optim.SGD(model.weights(), config.w_lr, momentum=config.w_momentum,
@@ -76,6 +81,7 @@ def main():
         lr_scheduler.step()
         lr = lr_scheduler.get_lr()[0]
 
+        trainer.current_epoch = epoch
         model.print_alphas(logger)
 
         # training
@@ -84,6 +90,7 @@ def main():
         # validation
         cur_step = (epoch+1) * len(train_loader)
         top1 = validate(valid_loader, model, epoch, cur_step)
+        trainer.on_validation_end()
 
         # log
         # genotype
@@ -105,6 +112,9 @@ def main():
             is_best = False
         utils.save_checkpoint(model, config.path, is_best)
         print("")
+        if trainer.should_stop:
+            print('Stopping the training with early stopping!')
+            break
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
     logger.info("Best Genotype = {}".format(best_genotype))
