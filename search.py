@@ -20,6 +20,7 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/'
          w_grad_clip: float = 5.,
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: int = 4, epochs: int = 50,
          init_channels: int = 16, layers: int = 8, seed: int = 42,
+         sparsity: float = 4,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
     """
     :param name: Experiment name
@@ -38,6 +39,7 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/'
     :param layers: # of layers in the network (number of cells)
     :param seed: Random seed
     :param workers: # of workers for data loading
+    :param sparsity: Entmax(sparisty) for alphas [1 is equivalent to Softmax]
     :param alpha_lr: Learning rate for alphas
     :param alpha_weight_decay: Weight decay for alphas
     :param alphas_path: Optional path for initial alphas (will be loaded as a torch file)
@@ -55,7 +57,7 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/'
 
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
     model = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers,
-                                sparsity=4, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(device)
+                                sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(device)
     model.architect = Architect(model, model.w_momentum, model.w_weight_decay)
 
     # callbacks = [
