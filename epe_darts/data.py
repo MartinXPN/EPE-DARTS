@@ -9,7 +9,7 @@ from torchvision.datasets import VisionDataset
 from epe_darts import preproc
 
 
-class AugmentDataModule(LightningDataModule):
+class DataModule(LightningDataModule):
     def __init__(self, dataset, data_dir='datasets', split_train: bool = False,
                  cutout_length=0, batch_size=64, workers: Optional[int] = None,
                  train_transforms=None, val_transforms=None, test_transforms=None, dims=None):

@@ -9,6 +9,7 @@ from tensorboardX import SummaryWriter
 from epe_darts import utils
 from epe_darts.architect import Architect
 from epe_darts.config import SearchConfig
+from epe_darts.data import DataModule
 from epe_darts.early_stopping import RankingChangeEarlyStopping
 from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed
@@ -46,7 +47,7 @@ def main():
         for name, param in model.named_parameters()
         if 'alpha_normal' in name
     ]
-    trainer = Trainer(callbacks=callbacks)
+    # trainer = Trainer(callbacks=callbacks)
 
     # weights optimizer
     w_optim = torch.optim.SGD(model.weights(), config.w_lr, momentum=config.w_momentum,
@@ -55,22 +56,12 @@ def main():
     alpha_optim = torch.optim.Adam(model.alphas(), config.alpha_lr, betas=(0.5, 0.999),
                                    weight_decay=config.alpha_weight_decay)
 
+    data = DataModule(dataset=config.dataset, data_dir=config.data_path, split_train=True,
+                      cutout_length=0, batch_size=config.batch_size, workers=config.workers)
+    data.setup()
     # split data to train/validation
-    n_train = len(train_data)
-    split = n_train // 2
-    indices = list(range(n_train))
-    train_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[:split])
-    valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[split:])
-    train_loader = torch.utils.data.DataLoader(train_data,
-                                               batch_size=config.batch_size,
-                                               sampler=train_sampler,
-                                               num_workers=config.workers,
-                                               pin_memory=True)
-    valid_loader = torch.utils.data.DataLoader(train_data,
-                                               batch_size=config.batch_size,
-                                               sampler=valid_sampler,
-                                               num_workers=config.workers,
-                                               pin_memory=True)
+    train_loader, valid_loader = data.train_dataloader()
+
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         w_optim, config.epochs, eta_min=config.w_lr_min)
     architect = Architect(model, config.w_momentum, config.w_weight_decay)
@@ -81,7 +72,7 @@ def main():
         lr_scheduler.step()
         lr = lr_scheduler.get_lr()[0]
 
-        trainer.current_epoch = epoch
+        # trainer.current_epoch = epoch
         model.print_alphas(logger)
 
         # training
@@ -90,7 +81,7 @@ def main():
         # validation
         cur_step = (epoch+1) * len(train_loader)
         top1 = validate(valid_loader, model, epoch, cur_step)
-        trainer.on_validation_end()
+        # trainer.on_validation_end()
 
         # log
         # genotype
@@ -112,9 +103,9 @@ def main():
             is_best = False
         utils.save_checkpoint(model, config.path, is_best)
         print("")
-        if trainer.should_stop:
-            print('Stopping the training with early stopping!')
-            break
+        # if trainer.should_stop:
+        #     print('Stopping the training with early stopping!')
+        #     break
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
     logger.info("Best Genotype = {}".format(best_genotype))

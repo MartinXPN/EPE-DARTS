@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 
 from epe_darts.augment_cnn import AugmentCNN, DropPathCallback
-from epe_darts.data import AugmentDataModule
+from epe_darts.data import DataModule
 from epe_darts.genotypes import Genotype
 from epe_darts.utils import fix_random_seed, ExperimentSetup
 from epe_darts import genotypes as gt
@@ -51,8 +51,8 @@ def train(name: str, dataset: str, genotype: str,
     """)
     genotype: Genotype = gt.from_str(genotype)
 
-    data = AugmentDataModule(dataset, data_path, split_train=False,
-                             cutout_length=cutout_length, batch_size=batch_size, workers=workers)
+    data = DataModule(dataset, data_path, split_train=False,
+                      cutout_length=cutout_length, batch_size=batch_size, workers=workers)
     data.setup()
 
     model = AugmentCNN(data.input_size, data.input_channels, init_channels, data.n_classes, layers,
