@@ -1,200 +1,89 @@
 """ Search cell """
-import os
+from typing import Union, List, Optional
 
+import fire
 import torch
-import torch.nn as nn
 from pytorch_lightning import Trainer
-from tensorboardX import SummaryWriter
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 
-from epe_darts import utils
 from epe_darts.architect import Architect
-from epe_darts.config import SearchConfig
 from epe_darts.data import DataModule
-from epe_darts.early_stopping import RankingChangeEarlyStopping
 from epe_darts.search_cnn import SearchCNNController
-from epe_darts.utils import fix_random_seed
-from epe_darts.visualize import plot
+from epe_darts.utils import fix_random_seed, ExperimentSetup
 
-config = SearchConfig()
-
-device = torch.device(config.gpus[0] if torch.cuda.is_available() else "cpu")
-
-# tensorboard
-writer = SummaryWriter(log_dir=os.path.join(config.path, "tb"))
-writer.add_text('config', config.as_markdown(), 0)
-
-logger = utils.get_logger(os.path.join(config.path, "{}.log".format(config.name)))
-config.print_params(logger.info)
+device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 
-def main():
-    logger.info("Logger is set - training start")
+def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/',
+         w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
+         w_grad_clip: float = 5.,
+         print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: int = 4, epochs: int = 50,
+         init_channels: int = 16, layers: int = 8, seed: int = 42,
+         alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
+    """
+    :param name: Experiment name
+    :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
+    :param data_path: Path to the dataset (download in that location if not present)
+    :param batch_size: Batch size
+    :param w_lr: Learning rate for network weights
+    :param w_lr_min: Minimum learning rate for network weights
+    :param w_momentum: Momentum for network weights
+    :param w_weight_decay: Weight decay for network weights
+    :param w_grad_clip: Gradient clipping threshold for network weights
+    :param print_freq: Logging frequency
+    :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
+    :param epochs: # of training epochs
+    :param init_channels: Initial channels
+    :param layers: # of layers in the network (number of cells)
+    :param seed: Random seed
+    :param workers: # of workers for data loading
+    :param alpha_lr: Learning rate for alphas
+    :param alpha_weight_decay: Weight decay for alphas
+    :param alphas_path: Optional path for initial alphas (will be loaded as a torch file)
+    """
+    hyperparams = locals()
     # set seed
-    fix_random_seed(config.seed)
+    fix_random_seed(seed, fix_cudnn=True)
+    experiment = ExperimentSetup(name=name, create_latest=True, long_description="""
+        Trying out Pytorch Lightning
+    """)
 
-    # get data with meta info
-    input_size, input_channels, n_classes, train_data = utils.get_data(
-        config.dataset, config.data_path, cutout_length=0, validation=False)
-
-    alpha_normal, alpha_reduce = torch.load(config.alphas_path) if config.alphas_path else (None, None)
-    net_crit = nn.CrossEntropyLoss().to(device)
-    model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
-                                net_crit, sparsity=4, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
-    model = model.to(device)
-
-    callbacks = [
-        RankingChangeEarlyStopping(monitor_param=param, patience=10)
-        for name, param in model.named_parameters()
-        if 'alpha_normal' in name
-    ]
-    # trainer = Trainer(callbacks=callbacks)
-
-    # weights optimizer
-    w_optim = torch.optim.SGD(model.weights(), config.w_lr, momentum=config.w_momentum,
-                              weight_decay=config.w_weight_decay)
-    # alphas optimizer
-    alpha_optim = torch.optim.Adam(model.alphas(), config.alpha_lr, betas=(0.5, 0.999),
-                                   weight_decay=config.alpha_weight_decay)
-
-    data = DataModule(dataset=config.dataset, data_dir=config.data_path, split_train=True,
-                      cutout_length=0, batch_size=config.batch_size, workers=config.workers)
+    data = DataModule(dataset=dataset, data_dir=data_path, split_train=True,
+                      cutout_length=0, batch_size=batch_size, workers=workers)
     data.setup()
-    # split data to train/validation
-    train_loader, valid_loader = data.train_dataloader()
 
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        w_optim, config.epochs, eta_min=config.w_lr_min)
-    architect = Architect(model, config.w_momentum, config.w_weight_decay)
+    alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
+    model = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers,
+                                sparsity=4, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(device)
+    model.architect = Architect(model, model.w_momentum, model.w_weight_decay)
 
-    # training loop
-    best_top1 = 0.
-    for epoch in range(config.epochs):
-        lr_scheduler.step()
-        lr = lr_scheduler.get_lr()[0]
+    # callbacks = [
+    #     RankingChangeEarlyStopping(monitor_param=param, patience=10)
+    #     for name, param in model.named_parameters()
+    #     if 'alpha_normal' in name
+    # ]
 
-        # trainer.current_epoch = epoch
-        model.print_alphas(logger)
+    loggers = [
+        CSVLogger(experiment.log_dir, name='history'),
+        TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
+        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='epe-darts', save_code=True, notes=experiment.long_description),
+        # AimLogger(experiment=experiment.name),
+    ]
+    for logger in loggers:
+        logger.log_hyperparams(hyperparams)
 
-        # training
-        train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch)
+    trainer = Trainer(logger=loggers, log_every_n_steps=print_freq,
+                      gpus=-1 if torch.cuda.is_available() else None,
+                      max_epochs=epochs, terminate_on_nan=True,
+                      callbacks=[
+                          # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
+                          ModelCheckpoint(dirpath=experiment.model_save_path, filename='model-{epoch:02d}-{valid_top1:.2f}', monitor='valid_top1', save_top_k=5, verbose=True, mode='max'),
+                          LearningRateMonitor(logging_interval='epoch'),
+                      ])
 
-        # validation
-        cur_step = (epoch+1) * len(train_loader)
-        top1 = validate(valid_loader, model, epoch, cur_step)
-        # trainer.on_validation_end()
-
-        # log
-        # genotype
-        genotype = model.genotype()
-        logger.info("genotype = {}".format(genotype))
-
-        # genotype as a image
-        plot_path = os.path.join(config.plot_path, "EP{:02d}".format(epoch+1))
-        caption = "Epoch {}".format(epoch+1)
-        plot(genotype.normal, plot_path + "-normal", caption)
-        plot(genotype.reduce, plot_path + "-reduce", caption)
-
-        # save
-        if best_top1 < top1:
-            best_top1 = top1
-            best_genotype = genotype
-            is_best = True
-        else:
-            is_best = False
-        utils.save_checkpoint(model, config.path, is_best)
-        print("")
-        # if trainer.should_stop:
-        #     print('Stopping the training with early stopping!')
-        #     break
-
-    logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
-    logger.info("Best Genotype = {}".format(best_genotype))
-
-
-def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch):
-    top1 = utils.AverageMeter()
-    top5 = utils.AverageMeter()
-    losses = utils.AverageMeter()
-
-    cur_step = epoch*len(train_loader)
-    writer.add_scalar('train/lr', lr, cur_step)
-
-    model.train()
-
-    for step, ((trn_X, trn_y), (val_X, val_y)) in enumerate(zip(train_loader, valid_loader)):
-        trn_X, trn_y = trn_X.to(device, non_blocking=True), trn_y.to(device, non_blocking=True)
-        val_X, val_y = val_X.to(device, non_blocking=True), val_y.to(device, non_blocking=True)
-        N = trn_X.size(0)
-
-        # phase 2. architect step (alpha)
-        alpha_optim.zero_grad()
-        architect.unrolled_backward(trn_X, trn_y, val_X, val_y, lr, w_optim)
-        alpha_optim.step()
-
-        # phase 1. child network step (w)
-        w_optim.zero_grad()
-        logits = model(trn_X)
-        loss = model.criterion(logits, trn_y)
-        loss.backward()
-        # gradient clipping
-        nn.utils.clip_grad_norm_(model.weights(), config.w_grad_clip)
-        w_optim.step()
-
-        prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))
-        losses.update(loss.item(), N)
-        top1.update(prec1.item(), N)
-        top5.update(prec5.item(), N)
-
-        if step % config.print_freq == 0 or step == len(train_loader)-1:
-            logger.info(
-                "Train: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
-                "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
-                    epoch+1, config.epochs, step, len(train_loader)-1, losses=losses,
-                    top1=top1, top5=top5))
-
-        writer.add_scalar('train/loss', loss.item(), cur_step)
-        writer.add_scalar('train/top1', prec1.item(), cur_step)
-        writer.add_scalar('train/top5', prec5.item(), cur_step)
-        cur_step += 1
-
-    logger.info("Train: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
-
-
-def validate(valid_loader, model, epoch, cur_step):
-    top1 = utils.AverageMeter()
-    top5 = utils.AverageMeter()
-    losses = utils.AverageMeter()
-
-    model.eval()
-
-    with torch.no_grad():
-        for step, (X, y) in enumerate(valid_loader):
-            X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            N = X.size(0)
-
-            logits = model(X)
-            loss = model.criterion(logits, y)
-
-            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
-            losses.update(loss.item(), N)
-            top1.update(prec1.item(), N)
-            top5.update(prec5.item(), N)
-
-            if step % config.print_freq == 0 or step == len(valid_loader)-1:
-                logger.info(
-                    "Valid: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
-                    "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
-                        epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
-                        top1=top1, top5=top5))
-
-    writer.add_scalar('val/loss', losses.avg, cur_step)
-    writer.add_scalar('val/top1', top1.avg, cur_step)
-    writer.add_scalar('val/top5', top5.avg, cur_step)
-
-    logger.info("Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
-
-    return top1.avg
+    trainer.fit(model, datamodule=data)
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(main)
