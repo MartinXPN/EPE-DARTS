@@ -1,7 +1,7 @@
 """ CNN for network augmentation """
 import torch
 import torch.nn as nn
-from pytorch_lightning import LightningModule
+from pytorch_lightning import LightningModule, Callback, Trainer
 
 from epe_darts import genotypes as gt, ops, utils
 
@@ -180,3 +180,16 @@ class AugmentCNN(LightningModule):
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
         }
+
+
+class DropPathCallback(Callback):
+    def __init__(self, max_epochs: int, drop_path_prob: float):
+        self.max_epochs: int = max_epochs
+        self.drop_path_prob: float = drop_path_prob
+
+    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
+        epoch = trainer.current_epoch
+        drop_prob = self.drop_path_prob * epoch / self.max_epochs
+        model = trainer.model
+        assert isinstance(model, AugmentCNN)
+        model.drop_path_prob(drop_prob)
