@@ -1,7 +1,11 @@
+from datetime import datetime
 import os
 import logging
 import random
 import shutil
+from pathlib import Path
+from typing import Optional
+
 import torch
 import torchvision.datasets as dset
 import numpy as np
@@ -15,8 +19,34 @@ def fix_random_seed(seed: int = 42, fix_cudnn: bool = True):
     os.environ['PYTHONHASHSEED'] = str(seed)
 
     if fix_cudnn:
+        torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = True
+
+
+class ExperimentSetup:
+    def __init__(self, name: str, long_description: Optional[str] = None, create_latest: bool = False):
+        """ Keeps track of the experiment path, model save path, log directory, and sessions """
+        self.name = name
+        self.long_description = long_description
+        self.experiment_time = datetime.now().replace(microsecond=0).isoformat()
+
+        self.experiment_path = Path('experiments') / f'{self.experiment_time}_{self.name}'
+        self.model_save_path = self.experiment_path / 'models/'
+        self.log_dir = self.experiment_path / 'logs/'
+        self.model_save_path.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        if long_description:
+            with open(self.log_dir / 'description.txt', 'w') as f:
+                f.write(long_description.strip())
+
+        if create_latest:
+            latest = Path('experiments/latest/').absolute()
+            latest.unlink(missing_ok=True)
+            latest.symlink_to(self.experiment_path.absolute(), target_is_directory=True)
+
+        print(f'Logging experiments at: `{self.experiment_path.absolute()}`')
 
 
 def get_data(dataset, data_path, cutout_length, validation):
@@ -70,12 +100,6 @@ def get_logger(file_path):
     logger.setLevel(logging.INFO)
 
     return logger
-
-
-def param_size(model):
-    """ Compute parameter size in MB """
-    n_params = sum(np.prod(v.size()) for k, v in model.named_parameters() if not k.startswith('aux_head'))
-    return n_params / 1024. / 1024.
 
 
 class AverageMeter:
