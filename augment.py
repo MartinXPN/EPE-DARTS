@@ -1,177 +1,86 @@
-""" Training augmented model """
-import os
+from typing import Union, List
+
+import fire
 import torch
-import torch.nn as nn
-import numpy as np
-from tensorboardX import SummaryWriter
-from epe_darts.config import AugmentConfig
-from epe_darts import utils
-from epe_darts.augment_cnn import AugmentCNN
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
+
+from epe_darts.augment_cnn import AugmentCNN, DropPathCallback
+from epe_darts.data import DataModule
+from epe_darts.genotypes import Genotype
+from epe_darts.utils import fix_random_seed, ExperimentSetup
+from epe_darts import genotypes as gt
 
 
-config = AugmentConfig()
+def train(name: str, dataset: str, genotype: str,
+          seed: int = 42, data_path: str = 'data/', batch_size: int = 64,
+          lr: float = 0.025, momentum: float = 0.9, weight_decay: float = 3e-4, grad_clip: float = 5.,
+          print_freq: int = 200, gpus: Union[List[int], int] = -1, epochs: int = 600,
+          init_channels: int = 36, layers: int = 20, stem_multiplier: int = 3, workers: int = 4,
+          aux_weight: float = 0.4, cutout_length: int = 16, drop_path_prob: float = 0.2):
+    """
+    Training Augmented Model
 
-device = torch.device("cuda")
+    :param name: Experiment name
+    :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
+    :param genotype: Cell genotype
+    :param seed: Random seed
+    :param data_path: Path to the dataset (download in that location if not present)
+    :param batch_size: Batch size
+    :param lr: Initial learning rate for weights
+    :param momentum: SGD momentum
+    :param weight_decay: SGD weight decay
+    :param grad_clip: Gradient clipping threshold
+    :param print_freq: Logging frequency
+    :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
+    :param epochs: # of training epochs
+    :param init_channels: Initial channels
+    :param layers: # of layers in the network (number of cells)
+    :param stem_multiplier: Stem multiplier
+    :param workers: # of workers for data loading
+    :param aux_weight: Auxiliary loss weight
+    :param cutout_length: Cutout length (for augmentation)
+    :param drop_path_prob: Probability of dropping a path
+    """
+    hyperparams = locals()
 
-# tensorboard
-writer = SummaryWriter(log_dir=os.path.join(config.path, "tb"))
-writer.add_text('config', config.as_markdown(), 0)
+    fix_random_seed(seed, fix_cudnn=True)
+    experiment = ExperimentSetup(name=name, create_latest=True, long_description="""
+    Trying out Pytorch Lightning
+    """)
+    genotype: Genotype = gt.from_str(genotype)
 
-logger = utils.get_logger(os.path.join(config.path, "{}.log".format(config.name)))
-config.print_params(logger.info)
+    data = DataModule(dataset, data_path, split_train=False,
+                      cutout_length=cutout_length, batch_size=batch_size, workers=workers)
+    data.setup()
 
+    model = AugmentCNN(data.input_size, data.input_channels, init_channels, data.n_classes, layers,
+                       aux_weight, genotype, stem_multiplier=stem_multiplier,
+                       lr=lr, momentum=momentum, weight_decay=weight_decay, max_epochs=epochs)
 
-def main():
-    logger.info("Logger is set - training start")
+    loggers = [
+        CSVLogger(experiment.log_dir, name='history'),
+        TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
+        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='epe-darts', save_code=True, notes=experiment.long_description),
+        # AimLogger(experiment=experiment.name),
+    ]
+    for logger in loggers:
+        logger.log_hyperparams(hyperparams)
 
-    # set default gpu device id
-    torch.cuda.set_device(config.gpus[0])
+    trainer = Trainer(logger=loggers, log_every_n_steps=print_freq,
+                      gpus=gpus if torch.cuda.is_available() else None,
+                      max_epochs=epochs, terminate_on_nan=True,
+                      gradient_clip_val=grad_clip,
+                      callbacks=[
+                          DropPathCallback(max_epochs=epochs, drop_path_prob=drop_path_prob),
+                          # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
+                          ModelCheckpoint(dirpath=experiment.model_save_path, filename='model-{epoch:02d}-{valid_top1:.2f}', monitor='valid_top1', save_top_k=5, verbose=True, mode='max'),
+                          LearningRateMonitor(logging_interval='epoch'),
+                      ])
 
-    # set seed
-    np.random.seed(config.seed)
-    torch.manual_seed(config.seed)
-    torch.cuda.manual_seed_all(config.seed)
-
-    torch.backends.cudnn.benchmark = True
-
-    # get data with meta info
-    input_size, input_channels, n_classes, train_data, valid_data = utils.get_data(
-        config.dataset, config.data_path, config.cutout_length, validation=True)
-
-    criterion = nn.CrossEntropyLoss().to(device)
-    use_aux = config.aux_weight > 0.
-    model = AugmentCNN(input_size, input_channels, config.init_channels, n_classes, config.layers,
-                       use_aux, config.genotype)
-    model = nn.DataParallel(model, device_ids=config.gpus).to(device)
-
-    # model size
-    mb_params = utils.param_size(model)
-    logger.info("Model size = {:.3f} MB".format(mb_params))
-
-    # weights optimizer
-    optimizer = torch.optim.SGD(model.parameters(), config.lr, momentum=config.momentum,
-                                weight_decay=config.weight_decay)
-
-    train_loader = torch.utils.data.DataLoader(train_data,
-                                               batch_size=config.batch_size,
-                                               shuffle=True,
-                                               num_workers=config.workers,
-                                               pin_memory=True)
-    valid_loader = torch.utils.data.DataLoader(valid_data,
-                                               batch_size=config.batch_size,
-                                               shuffle=False,
-                                               num_workers=config.workers,
-                                               pin_memory=True)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.epochs)
-
-    best_top1 = 0.
-    # training loop
-    for epoch in range(config.epochs):
-        lr_scheduler.step()
-        drop_prob = config.drop_path_prob * epoch / config.epochs
-        model.module.drop_path_prob(drop_prob)
-
-        # training
-        train(train_loader, model, optimizer, criterion, epoch)
-
-        # validation
-        cur_step = (epoch+1) * len(train_loader)
-        top1 = validate(valid_loader, model, criterion, epoch, cur_step)
-
-        # save
-        if best_top1 < top1:
-            best_top1 = top1
-            is_best = True
-        else:
-            is_best = False
-        utils.save_checkpoint(model, config.path, is_best)
-
-        print("")
-
-    logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
-
-
-def train(train_loader, model, optimizer, criterion, epoch):
-    top1 = utils.AverageMeter()
-    top5 = utils.AverageMeter()
-    losses = utils.AverageMeter()
-
-    cur_step = epoch*len(train_loader)
-    cur_lr = optimizer.param_groups[0]['lr']
-    logger.info("Epoch {} LR {}".format(epoch, cur_lr))
-    writer.add_scalar('train/lr', cur_lr, cur_step)
-
-    model.train()
-
-    for step, (X, y) in enumerate(train_loader):
-        X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
-        N = X.size(0)
-
-        optimizer.zero_grad()
-        logits, aux_logits = model(X)
-        loss = criterion(logits, y)
-        if config.aux_weight > 0.:
-            loss += config.aux_weight * criterion(aux_logits, y)
-        loss.backward()
-        # gradient clipping
-        nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
-        optimizer.step()
-
-        prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
-        losses.update(loss.item(), N)
-        top1.update(prec1.item(), N)
-        top5.update(prec5.item(), N)
-
-        if step % config.print_freq == 0 or step == len(train_loader)-1:
-            logger.info(
-                "Train: [{:3d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
-                "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
-                    epoch+1, config.epochs, step, len(train_loader)-1, losses=losses,
-                    top1=top1, top5=top5))
-
-        writer.add_scalar('train/loss', loss.item(), cur_step)
-        writer.add_scalar('train/top1', prec1.item(), cur_step)
-        writer.add_scalar('train/top5', prec5.item(), cur_step)
-        cur_step += 1
-
-    logger.info("Train: [{:3d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
-
-
-def validate(valid_loader, model, criterion, epoch, cur_step):
-    top1 = utils.AverageMeter()
-    top5 = utils.AverageMeter()
-    losses = utils.AverageMeter()
-
-    model.eval()
-
-    with torch.no_grad():
-        for step, (X, y) in enumerate(valid_loader):
-            X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            N = X.size(0)
-
-            logits, _ = model(X)
-            loss = criterion(logits, y)
-
-            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
-            losses.update(loss.item(), N)
-            top1.update(prec1.item(), N)
-            top5.update(prec5.item(), N)
-
-            if step % config.print_freq == 0 or step == len(valid_loader)-1:
-                logger.info(
-                    "Valid: [{:3d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
-                    "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
-                        epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
-                        top1=top1, top5=top5))
-
-    writer.add_scalar('val/loss', losses.avg, cur_step)
-    writer.add_scalar('val/top1', top1.avg, cur_step)
-    writer.add_scalar('val/top5', top5.avg, cur_step)
-
-    logger.info("Valid: [{:3d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
-
-    return top1.avg
+    trainer.fit(model, datamodule=data)
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(train)

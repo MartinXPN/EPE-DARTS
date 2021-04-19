@@ -4,7 +4,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 
 
-class Cutout(object):
+class Cutout:
     def __init__(self, length):
         self.length = length
 
@@ -37,7 +37,7 @@ imagenet_pca = {
 }
 
 
-class Lighting(object):
+class Lighting:
     def __init__(self, alphastd,
                  eigval=imagenet_pca['eigval'],
                  eigvec=imagenet_pca['eigvec']):

@@ -1,12 +1,14 @@
 """ CNN for architecture search """
-import logging
+from typing import Optional
 
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from entmax import entmax_bisect
 
-from epe_darts import genotypes as gt, ops
+from epe_darts import genotypes as gt, ops, utils
+from epe_darts.architect import Architect
 
 
 class SearchCell(nn.Module):
@@ -118,13 +120,25 @@ class SearchCNN(nn.Module):
         return logits
 
 
-class SearchCNNController(nn.Module):
+class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
-    def __init__(self, C_in, C, n_classes, n_layers, criterion, n_nodes=4, stem_multiplier=3,
+    def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
+                 w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
+                 alpha_lr=3e-4, alpha_weight_decay=1e-3,
+                 max_epochs: int = 50,
                  sparsity=8, alpha_normal=None, alpha_reduce=None):
         super().__init__()
-        self.n_nodes = n_nodes
-        self.criterion = criterion
+        self.automatic_optimization = False
+        self.n_nodes: int = n_nodes
+        self.criterion = nn.CrossEntropyLoss()
+        self.w_lr: float = w_lr
+        self.w_momentum: float = w_momentum
+        self.w_weight_decay: float = w_weight_decay
+        self.w_lr_min = w_lr_min
+        self.w_grad_clip = w_grad_clip
+        self.alpha_lr: float = alpha_lr
+        self.alpha_weight_decay: float = alpha_weight_decay
+        self.max_epochs: int = max_epochs
         self.sparsity = sparsity
 
         # initialize architect parameters: alphas
@@ -149,7 +163,8 @@ class SearchCNNController(nn.Module):
             if 'alpha' in n:
                 self._alphas.append((n, p))
 
-        self.net = SearchCNN(C_in, C, n_classes, n_layers, n_nodes, stem_multiplier)
+        self.net = SearchCNN(input_channels, init_channels, n_classes, n_layers, n_nodes, stem_multiplier)
+        self.architect: Optional[Architect] = None
 
     def forward(self, x):
         if self.sparsity == 1:
@@ -161,33 +176,87 @@ class SearchCNNController(nn.Module):
 
         return self.net(x, weights_normal, weights_reduce)
 
-    def loss(self, X, y):
-        logits = self.forward(X)
+    def training_step(self, batch, batch_idx, optimizer_idx):
+        (trn_X, trn_y), (val_X, val_y) = batch
+        w_optim, alpha_optim = self.optimizers()
+
+        if optimizer_idx != 0:
+            return
+
+        # phase 2. architect step (alpha)
+        alpha_optim.zero_grad()
+        w_lr = self.w_scheduler['scheduler'].get_last_lr()[-1]
+        self.architect.unrolled_backward(trn_X, trn_y, val_X, val_y, w_lr, w_optim)
+        alpha_optim.step()
+
+        # phase 1. child network step (w)
+        w_optim.zero_grad()
+        logits = self(trn_X)
+        loss = self.criterion(logits, trn_y)
+        self.manual_backward(loss)
+
+        # gradient clipping
+        nn.utils.clip_grad_norm_(self.weights(), self.w_grad_clip)
+        w_optim.step()
+
+        prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))
+        self.log('train_loss', loss)
+        self.log('train_top1', prec1)
+        self.log('train_top5', prec5)
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        with torch.no_grad():
+            logits = self(x)
+            loss = self.criterion(logits, y)
+            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
+
+        self.log('valid_loss', loss)
+        self.log('valid_top1', prec1)
+        self.log('valid_top5', prec5)
+
+    def on_train_epoch_start(self):
+        self.print_alphas()
+
+    def on_validation_epoch_end(self):
+        # log genotype
+        genotype = self.genotype()
+        print(genotype)
+        # TODO: log genotype with wandb (visualization of alpha connections)
+        # self.log('genotype', genotype)
+
+    def loss(self, x, y):
+        logits = self.forward(x)
         return self.criterion(logits, y)
 
-    def print_alphas(self, logger):
+    def configure_optimizers(self):
+        w_optim = torch.optim.SGD(self.weights(), self.w_lr, momentum=self.w_momentum, weight_decay=self.w_weight_decay)
+        self.w_scheduler = {
+            'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(w_optim, self.max_epochs, eta_min=self.w_lr_min),
+            'interval': 'epoch',
+        }
+
+        alpha_optim = torch.optim.Adam(self.alphas(), self.alpha_lr, betas=(0.5, 0.999), weight_decay=self.alpha_weight_decay)
+        self.alpha_scheduler = {
+            'scheduler': torch.optim.lr_scheduler.LambdaLR(alpha_optim, lr_lambda=lambda x: self.alpha_lr),
+            'interval': 'epoch',
+        }
+        return [w_optim, alpha_optim], [self.w_scheduler, self.alpha_scheduler]
+
+    def print_alphas(self):
         # remove formats
-        org_formatters = []
-        for handler in logger.handlers:
-            org_formatters.append(handler.formatter)
-            handler.setFormatter(logging.Formatter("%(message)s"))
-
-        logger.info(f'Sparsity: {self.sparsity}')
-        logger.info("####### ALPHA #######")
-        logger.info("\n# Alpha - normal")
+        print(f'Sparsity: {self.sparsity}')
+        print("####### ALPHA #######")
+        print("\n# Alpha - normal")
         for alpha in self.alpha_normal:
-            logger.info(F.softmax(alpha, dim=-1) if self.sparsity == 1 else
-                        entmax_bisect(alpha, dim=-1, alpha=self.sparsity))
+            print(F.softmax(alpha, dim=-1) if self.sparsity == 1 else
+                  entmax_bisect(alpha, dim=-1, alpha=self.sparsity))
 
-        logger.info("\n# Alpha - reduce")
+        print("\n# Alpha - reduce")
         for alpha in self.alpha_reduce:
-            logger.info(F.softmax(alpha, dim=-1) if self.sparsity == 1 else
-                        entmax_bisect(alpha, dim=-1, alpha=self.sparsity))
-        logger.info("#####################")
-
-        # restore formats
-        for handler, formatter in zip(logger.handlers, org_formatters):
-            handler.setFormatter(formatter)
+            print(F.softmax(alpha, dim=-1) if self.sparsity == 1 else
+                  entmax_bisect(alpha, dim=-1, alpha=self.sparsity))
+        print("#####################")
 
     def genotype(self):
         gene_normal = gt.parse(self.alpha_normal, k=2)
