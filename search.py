@@ -7,18 +7,15 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 
-from epe_darts.architect import Architect
 from epe_darts.data import DataModule
-from epe_darts.search_cnn import SearchCNNController
+from epe_darts.search_cnn import SearchCNNController, SearchController
 from epe_darts.utils import fix_random_seed, ExperimentSetup
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
-
-def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/',
+def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'datasets/',
          w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
          w_grad_clip: float = 5.,
-         print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: int = 4, epochs: int = 50,
+         print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None, epochs: int = 50,
          init_channels: int = 16, layers: int = 8, seed: int = 42,
          sparsity: float = 4,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
@@ -38,7 +35,7 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/'
     :param init_channels: Initial channels
     :param layers: # of layers in the network (number of cells)
     :param seed: Random seed
-    :param workers: # of workers for data loading
+    :param workers: # of workers for data loading if None will be os.cpu_count() - 1
     :param sparsity: Entmax(sparisty) for alphas [1 is equivalent to Softmax]
     :param alpha_lr: Learning rate for alphas
     :param alpha_weight_decay: Weight decay for alphas
@@ -56,9 +53,13 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'data/'
     data.setup()
 
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
-    model = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers,
-                                sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(device)
-    model.architect = Architect(model, model.w_momentum, model.w_weight_decay)
+    net = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers,
+                              sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
+    model = SearchController(net,
+                             w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
+                             w_grad_clip=w_grad_clip,
+                             alpha_lr=alpha_lr, alpha_weight_decay=alpha_weight_decay,
+                             max_epochs=epochs)
 
     # callbacks = [
     #     RankingChangeEarlyStopping(monitor_param=param, patience=10)

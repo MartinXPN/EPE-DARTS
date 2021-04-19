@@ -1,13 +1,11 @@
 """ Architect controls architecture of cell by computing gradients of alphas """
-import copy
-
 import torch
 
 
 class Architect:
     """ Compute gradients of alphas """
 
-    def __init__(self, net, w_momentum, w_weight_decay):
+    def __init__(self, net,  v_net, w_momentum, w_weight_decay):
         """
         Args:
             net
@@ -15,7 +13,7 @@ class Architect:
         """
         super().__init__()
         self.net = net
-        self.v_net = copy.deepcopy(net)
+        self.v_net = v_net
         self.w_momentum = w_momentum
         self.w_weight_decay = w_weight_decay
 

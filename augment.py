@@ -1,4 +1,4 @@
-from typing import Union, List
+from typing import Union, List, Optional
 
 import fire
 import torch
@@ -14,10 +14,10 @@ from epe_darts import genotypes as gt
 
 
 def train(name: str, dataset: str, genotype: str,
-          seed: int = 42, data_path: str = 'data/', batch_size: int = 64,
+          seed: int = 42, data_path: str = 'datasets/', batch_size: int = 64,
           lr: float = 0.025, momentum: float = 0.9, weight_decay: float = 3e-4, grad_clip: float = 5.,
           print_freq: int = 200, gpus: Union[List[int], int] = -1, epochs: int = 600,
-          init_channels: int = 36, layers: int = 20, stem_multiplier: int = 3, workers: int = 4,
+          init_channels: int = 36, layers: int = 20, stem_multiplier: int = 3, workers: Optional[int] = None,
           aux_weight: float = 0.4, cutout_length: int = 16, drop_path_prob: float = 0.2):
     """
     Training Augmented Model
@@ -38,7 +38,7 @@ def train(name: str, dataset: str, genotype: str,
     :param init_channels: Initial channels
     :param layers: # of layers in the network (number of cells)
     :param stem_multiplier: Stem multiplier
-    :param workers: # of workers for data loading
+    :param workers: # of workers for data loading if None will be os.cpu_count() - 1
     :param aux_weight: Auxiliary loss weight
     :param cutout_length: Cutout length (for augmentation)
     :param drop_path_prob: Probability of dropping a path
