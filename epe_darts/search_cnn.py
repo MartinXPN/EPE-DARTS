@@ -221,7 +221,9 @@ class SearchCNNController(pl.LightningModule):
     def on_validation_epoch_end(self):
         # log genotype
         genotype = self.genotype()
-        self.log('genotype', genotype)
+        print(genotype)
+        # TODO: log genotype with wandb (visualization of alpha connections)
+        # self.log('genotype', genotype)
 
     def loss(self, x, y):
         logits = self.forward(x)
