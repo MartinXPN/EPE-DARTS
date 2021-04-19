@@ -120,11 +120,12 @@ class SearchCNN(nn.Module):
         return logits
 
 
-class SearchCNNController(nn.Module):
+class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
                  sparsity=8, alpha_normal=None, alpha_reduce=None):
         super().__init__()
+        self.save_hyperparameters()
 
         self.n_nodes: int = n_nodes
         self.criterion = nn.CrossEntropyLoss()
@@ -196,7 +197,8 @@ class SearchController(pl.LightningModule):
                  alpha_lr=3e-4, alpha_weight_decay=1e-3,
                  max_epochs: int = 50):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters('w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip',
+                                  'alpha_lr', 'alpha_weight_decay', 'max_epochs')
         self.automatic_optimization = False
 
         self.w_lr: float = w_lr
