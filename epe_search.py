@@ -87,10 +87,9 @@ class EPESearch:
                                                        pin_memory=True)
 
     def create_net(self, alpha_normal=None, alpha_reduce=None):
-        net_crit = torch.nn.CrossEntropyLoss().to(self.device)
-        return SearchCNNController(C_in=self.input_channels, C=self.init_channels,
+        return SearchCNNController(input_channels=self.input_channels, init_channels=self.init_channels,
                                    n_classes=self.n_classes, n_layers=self.nb_layers,
-                                   criterion=net_crit, sparsity=self.sparsity,
+                                   sparsity=self.sparsity,
                                    alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(self.device)
 
     def evaluate_architecture(self, alpha_normal: nn.ParameterList, alpha_reduce: nn.ParameterList,
@@ -114,7 +113,6 @@ class EPESearch:
             # print('jacobs:', jacobs_batch)
             jacobs = jacobs_batch.reshape(jacobs_batch.size(0), -1).detach().cpu().numpy()
             target = target.detach().cpu().numpy()
-            # jacobs = np.concatenate(jacobs, axis=0)
 
             s = eval_score_per_class(jacobs, target, n_classes=self.n_classes)
             scores.append(s)

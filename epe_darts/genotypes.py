@@ -8,6 +8,7 @@ from typing import List, Tuple
 
 import torch
 import torch.nn as nn
+
 from epe_darts import ops
 
 Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
@@ -15,7 +16,7 @@ Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
 PRIMITIVES = [
     'max_pool_3x3',
     'avg_pool_3x3',
-    'skip_connect', # identity
+    'skip_connect',  # identity
     'sep_conv_3x3',
     'sep_conv_5x5',
     'dil_conv_3x3',
@@ -24,7 +25,7 @@ PRIMITIVES = [
 ]
 
 
-def to_dag(C_in: int, gene: List[List[Tuple[str, int]]], reduction):
+def to_dag(in_channels: int, gene: List[List[Tuple[str, int]]], reduction):
     """ generate discrete ops from gene """
     dag = nn.ModuleList()
     for edges in gene:
@@ -32,8 +33,8 @@ def to_dag(C_in: int, gene: List[List[Tuple[str, int]]], reduction):
         for op_name, s_idx in edges:
             # reduction cell & from input nodes => stride = 2
             stride = 2 if reduction and s_idx < 2 else 1
-            op = ops.OPS[op_name](C_in, stride, True)
-            if not isinstance(op, ops.Identity): # Identity does not use drop path
+            op = ops.OPS[op_name](in_channels, stride, True)
+            if not isinstance(op, ops.Identity):  # Identity does not use drop path
                 op = nn.Sequential(
                     op,
                     ops.DropPath_()
@@ -82,13 +83,13 @@ def parse(alpha: nn.ParameterList, k: int) -> List[List[Tuple[str, int]]]:
     """
 
     gene = []
-    assert PRIMITIVES[-1] == 'none' # assume last PRIMITIVE is 'none'
+    assert PRIMITIVES[-1] == 'none'  # assume last PRIMITIVE is 'none'
 
     # 1) Convert the mixed op to discrete edge (single op) by choosing top-1 weight edge
     # 2) Choose top-k edges per node by edge score (top-1 weight in edge)
     for edges in alpha:
         # edges: Tensor(n_edges, n_ops)
-        edge_max, primitive_indices = torch.topk(edges[:, :-1], 1) # ignore 'none'
+        edge_max, primitive_indices = torch.topk(edges[:, :-1], 1)  # ignore 'none'
         topk_edge_values, topk_edge_indices = torch.topk(edge_max.view(-1), k)
         node_gene = []
         for edge_idx in topk_edge_indices:

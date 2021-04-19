@@ -15,13 +15,13 @@ class SearchCell(nn.Module):
     """ Cell for search
     Each edge is mixed and continuous relaxed.
     """
-    def __init__(self, n_nodes, C_pp, C_p, C, reduction_p, reduction):
+    def __init__(self, n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction):
         """
         Args:
             n_nodes: # of intermediate n_nodes
-            C_pp: C_out[k-2]
-            C_p : C_out[k-1]
-            C   : C_in[k] (current)
+            prev_prev_channels: C_out[k-2]
+            prev_channels : C_out[k-1]
+            current_channels   : C_in[k] (current)
             reduction_p: flag for whether the previous cell is reduction cell or not
             reduction: flag for whether the current cell is reduction cell or not
         """
@@ -32,10 +32,10 @@ class SearchCell(nn.Module):
         # If previous cell is reduction cell, current input size does not match with
         # output size of cell[k-2]. So the output[k-2] should be reduced by preprocessing.
         if reduction_p:
-            self.preproc0 = ops.FactorizedReduce(C_pp, C, affine=False)
+            self.preproc0 = ops.FactorizedReduce(prev_prev_channels, current_channels, affine=False)
         else:
-            self.preproc0 = ops.StdConv(C_pp, C, 1, 1, 0, affine=False)
-        self.preproc1 = ops.StdConv(C_p, C, 1, 1, 0, affine=False)
+            self.preproc0 = ops.StdConv(prev_prev_channels, current_channels, 1, 1, 0, affine=False)
+        self.preproc1 = ops.StdConv(prev_channels, current_channels, 1, 1, 0, affine=False)
 
         # generate dag
         self.dag = nn.ModuleList()
@@ -44,7 +44,7 @@ class SearchCell(nn.Module):
             for j in range(2 + i):  # include 2 input nodes
                 # reduction should be used only for input node
                 stride = 2 if reduction and j < 2 else 1
-                op = ops.MixedOp(C, stride)
+                op = ops.MixedOp(current_channels, stride)
                 self.dag[i].append(op)
 
     def forward(self, s0, s1, w_dag):
@@ -62,50 +62,50 @@ class SearchCell(nn.Module):
 
 class SearchCNN(nn.Module):
     """ Search CNN model """
-    def __init__(self, C_in, C, n_classes, n_layers, n_nodes=4, stem_multiplier=3):
+    def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3):
         """
         Args:
-            C_in: # of input channels
-            C: # of starting model channels
+            input_channels: # of input channels
+            init_channels: # of starting model channels
             n_classes: # of classes
             n_layers: # of layers
             n_nodes: # of intermediate nodes in Cell
             stem_multiplier
         """
         super().__init__()
-        self.C_in = C_in
-        self.C = C
+        self.input_channels = input_channels
+        self.init_channels = init_channels
         self.n_classes = n_classes
         self.n_layers = n_layers
 
-        C_cur = stem_multiplier * C
+        current_channels = stem_multiplier * init_channels
         self.stem = nn.Sequential(
-            nn.Conv2d(C_in, C_cur, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(C_cur)
+            nn.Conv2d(input_channels, current_channels, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(current_channels)
         )
 
         # for the first cell, stem is used for both s0 and s1
-        # [!] C_pp and C_p is output channel size, but C_cur is input channel size.
-        C_pp, C_p, C_cur = C_cur, C_cur, C
+        # [!] prev_prev_channels and prev_channels is output channel size, but current_channels is input channel size.
+        prev_prev_channels, prev_channels, current_channels = current_channels, current_channels, init_channels
 
         self.cells = nn.ModuleList()
         reduction_p = False
         for i in range(n_layers):
             # Reduce featuremap size and double channels in 1/3 and 2/3 layer.
             if i in [n_layers//3, 2*n_layers//3]:
-                C_cur *= 2
+                current_channels *= 2
                 reduction = True
             else:
                 reduction = False
 
-            cell = SearchCell(n_nodes, C_pp, C_p, C_cur, reduction_p, reduction)
+            cell = SearchCell(n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction)
             reduction_p = reduction
             self.cells.append(cell)
-            C_cur_out = C_cur * n_nodes
-            C_pp, C_p = C_p, C_cur_out
+            cur_out_channels = current_channels * n_nodes
+            prev_prev_channels, prev_channels = prev_channels, cur_out_channels
 
         self.gap = nn.AdaptiveAvgPool2d(1)
-        self.linear = nn.Linear(C_p, n_classes)
+        self.linear = nn.Linear(prev_channels, n_classes)
 
     def forward(self, x, weights_normal, weights_reduce):
         s0 = s1 = self.stem(x)
@@ -115,7 +115,7 @@ class SearchCNN(nn.Module):
             s0, s1 = s1, cell(s0, s1, weights)
 
         out = self.gap(s1)
-        out = out.view(out.size(0), -1) # flatten
+        out = out.view(out.size(0), -1)  # flatten
         logits = self.linear(out)
         return logits
 
@@ -128,6 +128,7 @@ class SearchCNNController(pl.LightningModule):
                  max_epochs: int = 50,
                  sparsity=8, alpha_normal=None, alpha_reduce=None):
         super().__init__()
+        self.save_hyperparameters()
         self.automatic_optimization = False
         self.n_nodes: int = n_nodes
         self.criterion = nn.CrossEntropyLoss()
@@ -148,7 +149,7 @@ class SearchCNNController(pl.LightningModule):
         self.alpha_reduce = nn.ParameterList()
 
         if alpha_normal is not None and alpha_reduce is not None:
-            print('Using provided alphas...')
+            # print('Using provided alphas...')
             for normal, reduce in zip(alpha_normal, alpha_reduce):
                 self.alpha_normal.append(nn.Parameter(normal))
                 self.alpha_reduce.append(nn.Parameter(reduce))
