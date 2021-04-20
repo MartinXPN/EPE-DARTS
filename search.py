@@ -12,11 +12,12 @@ from epe_darts.search_cnn import SearchCNNController, SearchController
 from epe_darts.utils import fix_random_seed, ExperimentSetup
 
 
-def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'datasets/',
+def main(name: str, dataset: str, data_path: str = 'datasets/',
+         batch_size: int = 64, epochs: int = 50, seed: int = 42,
+         print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
          w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
          w_grad_clip: float = 5.,
-         print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None, epochs: int = 50,
-         init_channels: int = 16, layers: int = 8, seed: int = 42,
+         init_channels: int = 16, layers: int = 8,
          sparsity: float = 4,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
     """
@@ -24,18 +25,18 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'datase
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
     :param data_path: Path to the dataset (download in that location if not present)
     :param batch_size: Batch size
+    :param epochs: # of training epochs
+    :param seed: Random seed
+    :param print_freq: Logging frequency
+    :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
+    :param workers: # of workers for data loading if None will be os.cpu_count() - 1
     :param w_lr: Learning rate for network weights
     :param w_lr_min: Minimum learning rate for network weights
     :param w_momentum: Momentum for network weights
     :param w_weight_decay: Weight decay for network weights
     :param w_grad_clip: Gradient clipping threshold for network weights
-    :param print_freq: Logging frequency
-    :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
-    :param epochs: # of training epochs
     :param init_channels: Initial channels
     :param layers: # of layers in the network (number of cells)
-    :param seed: Random seed
-    :param workers: # of workers for data loading if None will be os.cpu_count() - 1
     :param sparsity: Entmax(sparisty) for alphas [1 is equivalent to Softmax]
     :param alpha_lr: Learning rate for alphas
     :param alpha_weight_decay: Weight decay for alphas
@@ -45,7 +46,7 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'datase
     # set seed
     fix_random_seed(seed, fix_cudnn=True)
     experiment = ExperimentSetup(name=name, create_latest=True, long_description="""
-        Trying out Pytorch Lightning
+    Trying out Pytorch Lightning
     """)
 
     data = DataModule(dataset=dataset, data_dir=data_path, split_train=True,
@@ -70,7 +71,7 @@ def main(name: str, dataset: str, batch_size: int = 64, data_path: str = 'datase
     loggers = [
         CSVLogger(experiment.log_dir, name='history'),
         TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
-        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='epe-darts', save_code=True, notes=experiment.long_description),
+        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='search-epe-darts', save_code=True, notes=experiment.long_description),
         # AimLogger(experiment=experiment.name),
     ]
     for logger in loggers:

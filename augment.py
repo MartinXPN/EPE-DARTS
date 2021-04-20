@@ -14,9 +14,9 @@ from epe_darts import genotypes as gt
 
 
 def train(name: str, dataset: str, genotype: str,
-          seed: int = 42, data_path: str = 'datasets/', batch_size: int = 64,
+          data_path: str = 'datasets/', batch_size: int = 96, epochs: int = 600, seed: int = 42,
           lr: float = 0.025, momentum: float = 0.9, weight_decay: float = 3e-4, grad_clip: float = 5.,
-          print_freq: int = 200, gpus: Union[List[int], int] = -1, epochs: int = 600,
+          print_freq: int = 200, gpus: Union[List[int], int] = -1,
           init_channels: int = 36, layers: int = 20, stem_multiplier: int = 3, workers: Optional[int] = None,
           aux_weight: float = 0.4, cutout_length: int = 16, drop_path_prob: float = 0.2):
     """
@@ -25,16 +25,16 @@ def train(name: str, dataset: str, genotype: str,
     :param name: Experiment name
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
     :param genotype: Cell genotype
-    :param seed: Random seed
     :param data_path: Path to the dataset (download in that location if not present)
     :param batch_size: Batch size
+    :param epochs: # of training epochs
+    :param seed: Random seed
     :param lr: Initial learning rate for weights
     :param momentum: SGD momentum
     :param weight_decay: SGD weight decay
     :param grad_clip: Gradient clipping threshold
     :param print_freq: Logging frequency
     :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
-    :param epochs: # of training epochs
     :param init_channels: Initial channels
     :param layers: # of layers in the network (number of cells)
     :param stem_multiplier: Stem multiplier
@@ -62,7 +62,7 @@ def train(name: str, dataset: str, genotype: str,
     loggers = [
         CSVLogger(experiment.log_dir, name='history'),
         TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
-        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='epe-darts', save_code=True, notes=experiment.long_description),
+        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='augment-epe-darts', save_code=True, notes=experiment.long_description),
         # AimLogger(experiment=experiment.name),
     ]
     for logger in loggers:
