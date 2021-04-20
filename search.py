@@ -17,7 +17,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
          w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
          w_grad_clip: float = 5.,
-         init_channels: int = 16, layers: int = 8,
+         init_channels: int = 16, layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
          sparsity: float = 4,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
     """
@@ -37,6 +37,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
     :param w_grad_clip: Gradient clipping threshold for network weights
     :param init_channels: Initial channels
     :param layers: # of layers in the network (number of cells)
+    :param nodes: # of nodes in a cell
+    :param stem_multiplier: Stem multiplier
     :param sparsity: Entmax(sparisty) for alphas [1 is equivalent to Softmax]
     :param alpha_lr: Learning rate for alphas
     :param alpha_weight_decay: Weight decay for alphas
@@ -54,7 +56,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
     data.setup()
 
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
-    net = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers,
+    net = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers, nodes, stem_multiplier,
                               sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
     model = SearchController(net,
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,

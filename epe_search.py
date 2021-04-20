@@ -7,10 +7,9 @@ import numpy as np
 import torch
 from pyswarm import pso
 from torch import nn
-from torch.utils.data import DataLoader
 from tqdm import trange
 
-from epe_darts import utils
+from epe_darts.data import DataModule
 from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed
 
@@ -79,12 +78,12 @@ class EPESearch:
 
     def __post_init__(self):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.input_size, self.input_channels, self.n_classes, self.train_data = utils.get_data(
-            dataset=self.dataset, data_path=self.data_path, cutout_length=0, validation=False)
-        self.data_loader = torch.utils.data.DataLoader(self.train_data,
-                                                       batch_size=self.batch_size,
-                                                       num_workers=self.workers,
-                                                       pin_memory=True)
+        self.datamodule = DataModule(dataset=self.dataset, data_dir=self.data_path, split_train=False, cutout_length=0,
+                                     batch_size=self.batch_size, workers=self.workers)
+        self.datamodule.setup()
+        self.input_channels = self.datamodule.input_channels
+        self.n_classes = self.datamodule.n_classes
+        self.data_loader = self.datamodule.train_dataloader()
 
     def create_net(self, alpha_normal=None, alpha_reduce=None):
         return SearchCNNController(input_channels=self.input_channels, init_channels=self.init_channels,
