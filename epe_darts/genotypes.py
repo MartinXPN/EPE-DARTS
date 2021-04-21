@@ -13,17 +13,6 @@ from epe_darts import ops
 
 Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
 
-PRIMITIVES = [
-    'max_pool_3x3',
-    'avg_pool_3x3',
-    'skip_connect',  # identity
-    'sep_conv_3x3',
-    'sep_conv_5x5',
-    'dil_conv_3x3',
-    'dil_conv_5x5',
-    'none'
-]
-
 
 def to_dag(in_channels: int, gene: List[List[Tuple[str, int]]], reduction):
     """ generate discrete ops from gene """
@@ -63,7 +52,7 @@ def from_str(s: str) -> Genotype:
     return eval(s)
 
 
-def parse(alpha: nn.ParameterList, k: int) -> List[List[Tuple[str, int]]]:
+def parse(alpha: nn.ParameterList, search_space: str, k: int) -> List[List[Tuple[str, int]]]:
     """
     parse continuous alpha to discrete gene.
     alpha is ParameterList:
@@ -83,7 +72,8 @@ def parse(alpha: nn.ParameterList, k: int) -> List[List[Tuple[str, int]]]:
     """
 
     gene = []
-    assert PRIMITIVES[-1] == 'none'  # assume last PRIMITIVE is 'none'
+    primitives = ops.SEARCH_SPACE2OPS[search_space]
+    assert primitives[-1] == 'none'  # assume last PRIMITIVE is 'none'
 
     # 1) Convert the mixed op to discrete edge (single op) by choosing top-1 weight edge
     # 2) Choose top-k edges per node by edge score (top-1 weight in edge)
@@ -94,7 +84,7 @@ def parse(alpha: nn.ParameterList, k: int) -> List[List[Tuple[str, int]]]:
         node_gene = []
         for edge_idx in topk_edge_indices:
             prim_idx = primitive_indices[edge_idx]
-            prim = PRIMITIVES[prim_idx]
+            prim = primitives[prim_idx]
             node_gene.append((prim, edge_idx.item()))
 
         gene.append(node_gene)

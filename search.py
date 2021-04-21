@@ -12,7 +12,7 @@ from epe_darts.search_cnn import SearchCNNController, SearchController
 from epe_darts.utils import fix_random_seed, ExperimentSetup
 
 
-def main(name: str, dataset: str, data_path: str = 'datasets/',
+def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: str = 'darts',
          batch_size: int = 64, epochs: int = 50, seed: int = 42,
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
          init_channels: int = 16, layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
@@ -24,6 +24,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
     :param name: Experiment name
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
     :param data_path: Path to the dataset (download in that location if not present)
+    :param search_space: On which search space to perform the search: {darts, nas-bench-201, connect-nas-bench}
     :param batch_size: Batch size
     :param epochs: # of training epochs
     :param seed: Random seed
@@ -46,6 +47,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
     :param alphas_path: Optional path for initial alphas (will be loaded as a torch file)
     """
     hyperparams = locals()
+    print(hyperparams)
     # set seed
     fix_random_seed(seed, fix_cudnn=True)
     experiment = ExperimentSetup(name=name, create_latest=True, long_description="""
@@ -58,6 +60,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
 
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
     net = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers, nodes, stem_multiplier,
+                              search_space=search_space,
                               sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
     model = SearchController(net,
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,

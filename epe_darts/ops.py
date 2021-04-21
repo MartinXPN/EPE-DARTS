@@ -2,8 +2,6 @@
 import torch
 import torch.nn as nn
 
-from epe_darts import genotypes as gt
-
 OPS = {
     'none': lambda channels, stride, affine: Zero(stride),
     'avg_pool_3x3': lambda channels, stride, affine: PoolBN('avg', channels, 3, stride, 1, affine=affine),
@@ -21,10 +19,10 @@ OPS = {
 }
 
 
-CONNECT_NAS_BENCHMARK = ['none', 'skip_connect', 'nor_conv_3x3']
-NAS_BENCH_201         = ['none', 'skip_connect', 'nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3']
-DARTS                 = ['none', 'skip_connect', 'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3',
-                         'dil_conv_5x5', 'avg_pool_3x3', 'max_pool_3x3']
+CONNECT_NAS_BENCHMARK = ['nor_conv_3x3', 'skip_connect', 'none']
+NAS_BENCH_201         = ['nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3', 'skip_connect', 'none']
+DARTS                 = ['sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5',
+                         'avg_pool_3x3', 'max_pool_3x3', 'skip_connect', 'none']
 SEARCH_SPACE2OPS = {
     'connect-nas-bench': CONNECT_NAS_BENCHMARK,
     'nas-bench-201': NAS_BENCH_201,
@@ -210,10 +208,10 @@ class FactorizedReduce(nn.Module):
 
 class MixedOp(nn.Module):
     """ Mixed operation """
-    def __init__(self, channels, stride):
+    def __init__(self, channels, stride, search_space):
         super().__init__()
         self._ops = nn.ModuleList()
-        for primitive in gt.PRIMITIVES:
+        for primitive in SEARCH_SPACE2OPS[search_space]:
             op = OPS[primitive](channels, stride, affine=False)
             self._ops.append(op)
 

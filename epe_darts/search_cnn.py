@@ -15,19 +15,14 @@ class SearchCell(nn.Module):
     """ Cell for search
     Each edge is mixed and continuous relaxed.
     """
-    def __init__(self, n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction):
-        """
-        Args:
-            n_nodes: # of intermediate n_nodes
-            prev_prev_channels: C_out[k-2]
-            prev_channels : C_out[k-1]
-            current_channels   : C_in[k] (current)
-            reduction_p: flag for whether the previous cell is reduction cell or not
-            reduction: flag for whether the current cell is reduction cell or not
-        """
+    def __init__(self, n_nodes,
+                 prev_prev_channels, prev_channels, current_channels,
+                 reduction_p, reduction,
+                 search_space):
         super().__init__()
         self.reduction = reduction
         self.n_nodes = n_nodes
+        self.search_space = search_space
 
         # If previous cell is reduction cell, current input size does not match with
         # output size of cell[k-2]. So the output[k-2] should be reduced by preprocessing.
@@ -44,7 +39,7 @@ class SearchCell(nn.Module):
             for j in range(2 + i):  # include 2 input nodes
                 # reduction should be used only for input node
                 stride = 2 if reduction and j < 2 else 1
-                op = ops.MixedOp(current_channels, stride)
+                op = ops.MixedOp(current_channels, stride, self.search_space)
                 self.dag[i].append(op)
 
     def forward(self, s0, s1, w_dag):
@@ -62,7 +57,8 @@ class SearchCell(nn.Module):
 
 class SearchCNN(nn.Module):
     """ Search CNN model """
-    def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3):
+    def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
+                 search_space: str = 'darts'):
         """
         Args:
             input_channels: # of input channels
@@ -77,6 +73,7 @@ class SearchCNN(nn.Module):
         self.init_channels = init_channels
         self.n_classes = n_classes
         self.n_layers = n_layers
+        self.search_space = search_space
 
         current_channels = stem_multiplier * init_channels
         self.stem = nn.Sequential(
@@ -98,7 +95,8 @@ class SearchCNN(nn.Module):
             else:
                 reduction = False
 
-            cell = SearchCell(n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction)
+            cell = SearchCell(n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction,
+                              search_space=search_space)
             reduction_p = reduction
             self.cells.append(cell)
             cur_out_channels = current_channels * n_nodes
@@ -123,16 +121,18 @@ class SearchCNN(nn.Module):
 class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
+                 search_space='darts',
                  sparsity=1, alpha_normal=None, alpha_reduce=None):
         super().__init__()
         self.save_hyperparameters()
 
+        self.search_space = search_space
         self.n_nodes: int = n_nodes
         self.criterion = nn.CrossEntropyLoss()
         self.sparsity = sparsity
 
         # initialize alphas
-        n_ops = len(gt.PRIMITIVES)
+        n_ops = len(ops.SEARCH_SPACE2OPS[self.search_space])
         self.alpha_normal = nn.ParameterList()
         self.alpha_reduce = nn.ParameterList()
 
@@ -152,7 +152,8 @@ class SearchCNNController(pl.LightningModule):
             if 'alpha' in n:
                 self._alphas.append((n, p))
 
-        self.net = SearchCNN(input_channels, init_channels, n_classes, n_layers, n_nodes, stem_multiplier)
+        self.net = SearchCNN(input_channels, init_channels, n_classes, n_layers, n_nodes, stem_multiplier,
+                             search_space=search_space)
 
     def forward(self, x):
         if self.sparsity == 1:
@@ -169,8 +170,8 @@ class SearchCNNController(pl.LightningModule):
         return self.criterion(logits, y)
 
     def genotype(self):
-        gene_normal = gt.parse(self.alpha_normal, k=2)
-        gene_reduce = gt.parse(self.alpha_reduce, k=2)
+        gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2)
+        gene_reduce = gt.parse(self.alpha_reduce, search_space=self.search_space, k=2)
         concat = range(2, 2 + self.n_nodes)  # concat all intermediate nodes
 
         return gt.Genotype(normal=gene_normal, normal_concat=concat,
