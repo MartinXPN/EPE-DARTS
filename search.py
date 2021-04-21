@@ -8,7 +8,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 
 from epe_darts.data import DataModule
-from epe_darts.search_cnn import SearchCNNController, SearchController
+from epe_darts.search_cnn import SearchCNNController
+from epe_darts.controller import SearchController
 from epe_darts.utils import fix_random_seed, ExperimentSetup
 
 
@@ -47,7 +48,6 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     :param alphas_path: Optional path for initial alphas (will be loaded as a torch file)
     """
     hyperparams = locals()
-    print(hyperparams)
     # set seed
     fix_random_seed(seed, fix_cudnn=True)
     experiment = ExperimentSetup(name=name, create_latest=True, long_description="""
