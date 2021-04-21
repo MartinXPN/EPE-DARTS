@@ -71,6 +71,9 @@ class EPESearch:
     batch_size: int = 32
     init_channels: int = 16
     nb_layers: int = 8
+    nb_nodes: int = 4
+    stem_multiplier: int = 3
+    search_space: str = 'darts'
     sparsity: float = 4
     workers: int = 4
     data_path: Path = Path('datasets')
@@ -87,8 +90,9 @@ class EPESearch:
 
     def create_net(self, alpha_normal=None, alpha_reduce=None):
         return SearchCNNController(input_channels=self.input_channels, init_channels=self.init_channels,
-                                   n_classes=self.n_classes, n_layers=self.nb_layers,
-                                   sparsity=self.sparsity,
+                                   n_classes=self.n_classes, n_layers=self.nb_layers, n_nodes=self.nb_nodes,
+                                   stem_multiplier=self.stem_multiplier,
+                                   search_space=self.search_space, sparsity=self.sparsity,
                                    alpha_normal=alpha_normal, alpha_reduce=alpha_reduce).to(self.device)
 
     def evaluate_architecture(self, alpha_normal: nn.ParameterList, alpha_reduce: nn.ParameterList,
