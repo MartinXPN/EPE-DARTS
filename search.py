@@ -15,9 +15,9 @@ from epe_darts.utils import fix_random_seed, ExperimentSetup
 def main(name: str, dataset: str, data_path: str = 'datasets/',
          batch_size: int = 64, epochs: int = 50, seed: int = 42,
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
-         w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
-         w_grad_clip: float = 5.,
          init_channels: int = 16, layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
+         w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
+         w_grad_clip: float = 5., nesterov: bool = False,
          sparsity: float = 4,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
     """
@@ -30,15 +30,16 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
     :param print_freq: Logging frequency
     :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
     :param workers: # of workers for data loading if None will be os.cpu_count() - 1
+    :param init_channels: Initial channels
+    :param layers: # of layers in the network (number of cells)
+    :param nodes: # of nodes in a cell
+    :param stem_multiplier: Stem multiplier
     :param w_lr: Learning rate for network weights
     :param w_lr_min: Minimum learning rate for network weights
     :param w_momentum: Momentum for network weights
     :param w_weight_decay: Weight decay for network weights
     :param w_grad_clip: Gradient clipping threshold for network weights
-    :param init_channels: Initial channels
-    :param layers: # of layers in the network (number of cells)
-    :param nodes: # of nodes in a cell
-    :param stem_multiplier: Stem multiplier
+    :param nesterov: Whether to use nesterov for SGD of weights or no
     :param sparsity: Entmax(sparisty) for alphas [1 is equivalent to Softmax]
     :param alpha_lr: Learning rate for alphas
     :param alpha_weight_decay: Weight decay for alphas
@@ -60,7 +61,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/',
                               sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
     model = SearchController(net,
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
-                             w_grad_clip=w_grad_clip,
+                             w_grad_clip=w_grad_clip, nesterov=nesterov,
                              alpha_lr=alpha_lr, alpha_weight_decay=alpha_weight_decay,
                              max_epochs=epochs)
 

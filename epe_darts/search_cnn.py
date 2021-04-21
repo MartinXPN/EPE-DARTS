@@ -123,7 +123,7 @@ class SearchCNN(nn.Module):
 class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
-                 sparsity=8, alpha_normal=None, alpha_reduce=None):
+                 sparsity=1, alpha_normal=None, alpha_reduce=None):
         super().__init__()
         self.save_hyperparameters()
 
@@ -194,6 +194,7 @@ class SearchCNNController(pl.LightningModule):
 class SearchController(pl.LightningModule):
     def __init__(self, net: nn.Module,
                  w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
+                 nesterov=False,
                  alpha_lr=3e-4, alpha_weight_decay=1e-3,
                  max_epochs: int = 50):
         super().__init__()
@@ -204,14 +205,15 @@ class SearchController(pl.LightningModule):
         self.w_lr: float = w_lr
         self.w_momentum: float = w_momentum
         self.w_weight_decay: float = w_weight_decay
-        self.w_lr_min = w_lr_min
-        self.w_grad_clip = w_grad_clip
+        self.w_lr_min: float = w_lr_min
+        self.w_grad_clip: float = w_grad_clip
+        self.nesterov: bool = nesterov
         self.alpha_lr: float = alpha_lr
         self.alpha_weight_decay: float = alpha_weight_decay
         self.max_epochs: int = max_epochs
 
-        self.net = net
-        self.net_copy = copy.deepcopy(net)
+        self.net: nn.Module = net
+        self.net_copy: nn.Module = copy.deepcopy(net)
         self.architect = Architect(self.net, self.net_copy, self.w_momentum, self.w_weight_decay)
 
     def training_step(self, batch, batch_idx, optimizer_idx):
@@ -257,13 +259,15 @@ class SearchController(pl.LightningModule):
         self.print_alphas()
 
     def configure_optimizers(self):
-        w_optim = torch.optim.SGD(self.net.weights(), self.w_lr, momentum=self.w_momentum, weight_decay=self.w_weight_decay)
+        w_optim = torch.optim.SGD(self.net.weights(), self.w_lr,
+                                  momentum=self.w_momentum, weight_decay=self.w_weight_decay, nesterov=self.nesterov)
         self.w_scheduler = {
             'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(w_optim, self.max_epochs, eta_min=self.w_lr_min),
             'interval': 'epoch',
         }
 
-        alpha_optim = torch.optim.Adam(self.net.alphas(), self.alpha_lr, betas=(0.5, 0.999), weight_decay=self.alpha_weight_decay)
+        alpha_optim = torch.optim.Adam(self.net.alphas(), self.alpha_lr,
+                                       betas=(0.5, 0.999), weight_decay=self.alpha_weight_decay)
         self.alpha_scheduler = {
             'scheduler': torch.optim.lr_scheduler.LambdaLR(alpha_optim, lr_lambda=lambda x: self.alpha_lr),
             'interval': 'epoch',
