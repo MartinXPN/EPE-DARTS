@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from pyswarm import pso
 from torch import nn
+from torch.utils.data import DataLoader
 from tqdm import trange
 
 from epe_darts.data import DataModule
@@ -77,16 +78,17 @@ class EPESearch:
     sparsity: float = 4
     workers: int = 4
     data_path: Path = Path('datasets')
-    save_path: Path = Path('analysis')
+    save_path: Path = Path('initial_alphas')
 
     def __post_init__(self):
+        self.save_path.mkdir(parents=True, exist_ok=True)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.datamodule = DataModule(dataset=self.dataset, data_dir=self.data_path, split_train=False, cutout_length=0,
                                      batch_size=self.batch_size, workers=self.workers)
         self.datamodule.setup()
-        self.input_channels = self.datamodule.input_channels
-        self.n_classes = self.datamodule.n_classes
-        self.data_loader = self.datamodule.train_dataloader()
+        self.input_channels: int = self.datamodule.input_channels
+        self.n_classes: int = self.datamodule.n_classes
+        self.data_loader: DataLoader = self.datamodule.train_dataloader()
 
     def create_net(self, alpha_normal=None, alpha_reduce=None):
         return SearchCNNController(input_channels=self.input_channels, init_channels=self.init_channels,
@@ -124,6 +126,7 @@ class EPESearch:
 
     def random_search(self):
         scores: Dict[Tuple, List] = {}
+        best: float = -1
         for arch in range(self.nb_architectures):
             network = self.create_net()
             alpha_normal = network.alpha_normal
@@ -131,7 +134,10 @@ class EPESearch:
             arch_scores = self.evaluate_architecture(alpha_normal, alpha_reduce, data_iterator=iter(self.data_loader),
                                                      nb_runs=self.nb_weight_samples)
             scores[(alpha_normal, alpha_reduce)] = arch_scores
-            torch.save(scores, self.save_path / 'entmax_random_scores.pt')
+            torch.save(scores, self.save_path / f'random-scores-sparsity{self.sparsity}.pt')
+            if np.mean(arch_scores) > best:
+                best = float(np.mean(arch_scores))
+                torch.save((alpha_normal, alpha_reduce), self.save_path / f'best-sparsity{self.sparsity}.pt')
         return scores
 
     def pso_search(self):
@@ -154,6 +160,7 @@ class EPESearch:
         high = [1.] * (nb_param_list_items(network.alpha_normal) + nb_param_list_items(network.alpha_reduce))
 
         scores: Dict[Tuple, List] = {}
+        best: float = -1
 
         def eval_alphas(alphas):
             alpha_normal = reshape_alphas(np.copy(alphas), ref_shapes=[item.shape for item in network.alpha_normal])
@@ -163,7 +170,13 @@ class EPESearch:
             arch_scores = self.evaluate_architecture(alpha_normal, alpha_reduce, data_iterator=iter(self.data_loader),
                                                      nb_runs=self.nb_weight_samples)
             scores[(alpha_normal, alpha_reduce)] = arch_scores
-            torch.save(scores, self.save_path / 'entmax_pso_scores.pt')
+            torch.save(scores, self.save_path / f'pso-scores-sparsity{self.sparsity}.pt')
+
+            nonlocal best
+            if np.mean(arch_scores) > best:
+                best = float(np.mean(arch_scores))
+                torch.save((alpha_normal, alpha_reduce), self.save_path / f'best-sparsity{self.sparsity}.pt')
+
             return -np.mean(arch_scores)
 
         pso(eval_alphas, lb=low, ub=high, maxiter=self.nb_architectures)
