@@ -1,33 +1,25 @@
 """ CNN for architecture search """
-import copy
-
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from entmax import entmax_bisect
 
-from epe_darts import genotypes as gt, ops, utils
-from epe_darts.architect import Architect
+from epe_darts import genotypes as gt, ops
 
 
 class SearchCell(nn.Module):
     """ Cell for search
     Each edge is mixed and continuous relaxed.
     """
-    def __init__(self, n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction):
-        """
-        Args:
-            n_nodes: # of intermediate n_nodes
-            prev_prev_channels: C_out[k-2]
-            prev_channels : C_out[k-1]
-            current_channels   : C_in[k] (current)
-            reduction_p: flag for whether the previous cell is reduction cell or not
-            reduction: flag for whether the current cell is reduction cell or not
-        """
+    def __init__(self, n_nodes,
+                 prev_prev_channels, prev_channels, current_channels,
+                 reduction_p, reduction,
+                 search_space):
         super().__init__()
         self.reduction = reduction
         self.n_nodes = n_nodes
+        self.search_space = search_space
 
         # If previous cell is reduction cell, current input size does not match with
         # output size of cell[k-2]. So the output[k-2] should be reduced by preprocessing.
@@ -44,7 +36,7 @@ class SearchCell(nn.Module):
             for j in range(2 + i):  # include 2 input nodes
                 # reduction should be used only for input node
                 stride = 2 if reduction and j < 2 else 1
-                op = ops.MixedOp(current_channels, stride)
+                op = ops.MixedOp(current_channels, stride, self.search_space)
                 self.dag[i].append(op)
 
     def forward(self, s0, s1, w_dag):
@@ -62,7 +54,8 @@ class SearchCell(nn.Module):
 
 class SearchCNN(nn.Module):
     """ Search CNN model """
-    def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3):
+    def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
+                 search_space: str = 'darts'):
         """
         Args:
             input_channels: # of input channels
@@ -77,6 +70,7 @@ class SearchCNN(nn.Module):
         self.init_channels = init_channels
         self.n_classes = n_classes
         self.n_layers = n_layers
+        self.search_space = search_space
 
         current_channels = stem_multiplier * init_channels
         self.stem = nn.Sequential(
@@ -98,7 +92,8 @@ class SearchCNN(nn.Module):
             else:
                 reduction = False
 
-            cell = SearchCell(n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction)
+            cell = SearchCell(n_nodes, prev_prev_channels, prev_channels, current_channels, reduction_p, reduction,
+                              search_space=search_space)
             reduction_p = reduction
             self.cells.append(cell)
             cur_out_channels = current_channels * n_nodes
@@ -123,16 +118,19 @@ class SearchCNN(nn.Module):
 class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
-                 sparsity=8, alpha_normal=None, alpha_reduce=None):
+                 search_space='darts',
+                 sparsity=1, alpha_normal=None, alpha_reduce=None):
         super().__init__()
         self.save_hyperparameters()
 
+        self.search_space = search_space
+        self.primitives = ops.SEARCH_SPACE2OPS[self.search_space]
         self.n_nodes: int = n_nodes
         self.criterion = nn.CrossEntropyLoss()
         self.sparsity = sparsity
 
         # initialize alphas
-        n_ops = len(gt.PRIMITIVES)
+        n_ops = len(self.primitives)
         self.alpha_normal = nn.ParameterList()
         self.alpha_reduce = nn.ParameterList()
 
@@ -152,16 +150,20 @@ class SearchCNNController(pl.LightningModule):
             if 'alpha' in n:
                 self._alphas.append((n, p))
 
-        self.net = SearchCNN(input_channels, init_channels, n_classes, n_layers, n_nodes, stem_multiplier)
+        self.net = SearchCNN(input_channels, init_channels, n_classes, n_layers, n_nodes, stem_multiplier,
+                             search_space=search_space)
 
-    def forward(self, x):
+    def alpha_weights(self):
         if self.sparsity == 1:
             weights_normal = [F.softmax(alpha, dim=-1) for alpha in self.alpha_normal]
             weights_reduce = [F.softmax(alpha, dim=-1) for alpha in self.alpha_reduce]
         else:
             weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_normal]
             weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_reduce]
+        return weights_normal, weights_reduce
 
+    def forward(self, x):
+        weights_normal, weights_reduce = self.alpha_weights()
         return self.net(x, weights_normal, weights_reduce)
 
     def loss(self, x, y):
@@ -169,8 +171,8 @@ class SearchCNNController(pl.LightningModule):
         return self.criterion(logits, y)
 
     def genotype(self):
-        gene_normal = gt.parse(self.alpha_normal, k=2)
-        gene_reduce = gt.parse(self.alpha_reduce, k=2)
+        gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2)
+        gene_reduce = gt.parse(self.alpha_reduce, search_space=self.search_space, k=2)
         concat = range(2, 2 + self.n_nodes)  # concat all intermediate nodes
 
         return gt.Genotype(normal=gene_normal, normal_concat=concat,
@@ -189,105 +191,3 @@ class SearchCNNController(pl.LightningModule):
     def named_alphas(self):
         for n, p in self._alphas:
             yield n, p
-
-
-class SearchController(pl.LightningModule):
-    def __init__(self, net: nn.Module,
-                 w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
-                 alpha_lr=3e-4, alpha_weight_decay=1e-3,
-                 max_epochs: int = 50):
-        super().__init__()
-        self.save_hyperparameters('w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip',
-                                  'alpha_lr', 'alpha_weight_decay', 'max_epochs')
-        self.automatic_optimization = False
-
-        self.w_lr: float = w_lr
-        self.w_momentum: float = w_momentum
-        self.w_weight_decay: float = w_weight_decay
-        self.w_lr_min = w_lr_min
-        self.w_grad_clip = w_grad_clip
-        self.alpha_lr: float = alpha_lr
-        self.alpha_weight_decay: float = alpha_weight_decay
-        self.max_epochs: int = max_epochs
-
-        self.net = net
-        self.net_copy = copy.deepcopy(net)
-        self.architect = Architect(self.net, self.net_copy, self.w_momentum, self.w_weight_decay)
-
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        if optimizer_idx != 0:
-            return
-
-        (trn_X, trn_y), (val_X, val_y) = batch
-        w_optim, alpha_optim = self.optimizers()
-
-        # phase 2. architect step (alpha)
-        alpha_optim.zero_grad()
-        w_lr = self.w_scheduler['scheduler'].get_last_lr()[-1]
-        self.architect.unrolled_backward(trn_X, trn_y, val_X, val_y, w_lr, w_optim)
-        alpha_optim.step()
-
-        # phase 1. child network step (w)
-        w_optim.zero_grad()
-        logits = self.net(trn_X)
-        loss = self.net.criterion(logits, trn_y)
-        self.manual_backward(loss)
-
-        # gradient clipping
-        nn.utils.clip_grad_norm_(self.net.weights(), self.w_grad_clip)
-        w_optim.step()
-
-        prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))
-        self.log('train_loss', loss)
-        self.log('train_top1', prec1)
-        self.log('train_top5', prec5)
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        with torch.no_grad():
-            logits = self.net(x)
-            loss = self.net.criterion(logits, y)
-            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
-
-        self.log('valid_loss', loss)
-        self.log('valid_top1', prec1)
-        self.log('valid_top5', prec5)
-
-    def on_train_epoch_start(self):
-        self.print_alphas()
-
-    def configure_optimizers(self):
-        w_optim = torch.optim.SGD(self.net.weights(), self.w_lr, momentum=self.w_momentum, weight_decay=self.w_weight_decay)
-        self.w_scheduler = {
-            'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR(w_optim, self.max_epochs, eta_min=self.w_lr_min),
-            'interval': 'epoch',
-        }
-
-        alpha_optim = torch.optim.Adam(self.net.alphas(), self.alpha_lr, betas=(0.5, 0.999), weight_decay=self.alpha_weight_decay)
-        self.alpha_scheduler = {
-            'scheduler': torch.optim.lr_scheduler.LambdaLR(alpha_optim, lr_lambda=lambda x: self.alpha_lr),
-            'interval': 'epoch',
-        }
-        return [w_optim, alpha_optim], [self.w_scheduler, self.alpha_scheduler]
-
-    def on_validation_epoch_end(self):
-        # log genotype
-        genotype = self.net.genotype()
-        print(genotype)
-        # TODO: log genotype with wandb (visualization of alpha connections)
-        # self.log('genotype', genotype)
-
-    def print_alphas(self):
-        # remove formats
-        print(f'Sparsity: {self.net.sparsity}')
-        print("####### ALPHA #######")
-        print("\n# Alpha - normal")
-        for alpha in self.net.alpha_normal:
-            print(F.softmax(alpha, dim=-1) if self.net.sparsity == 1 else
-                  entmax_bisect(alpha, dim=-1, alpha=self.net.sparsity))
-
-        print("\n# Alpha - reduce")
-        for alpha in self.net.alpha_reduce:
-            print(F.softmax(alpha, dim=-1) if self.net.sparsity == 1 else
-                  entmax_bisect(alpha, dim=-1, alpha=self.net.sparsity))
-        print("#####################")

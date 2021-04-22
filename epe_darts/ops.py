@@ -1,20 +1,32 @@
 """ Operations """
 import torch
 import torch.nn as nn
-from epe_darts import genotypes as gt
 
 OPS = {
     'none': lambda channels, stride, affine: Zero(stride),
     'avg_pool_3x3': lambda channels, stride, affine: PoolBN('avg', channels, 3, stride, 1, affine=affine),
     'max_pool_3x3': lambda channels, stride, affine: PoolBN('max', channels, 3, stride, 1, affine=affine),
-    'skip_connect': lambda channels, stride, affine: \
-        Identity() if stride == 1 else FactorizedReduce(channels, channels, affine=affine),
+    'skip_connect': lambda channels, stride, affine: Identity() if stride == 1 else FactorizedReduce(channels, channels, affine=affine),
     'sep_conv_3x3': lambda channels, stride, affine: SepConv(channels, channels, 3, stride, 1, affine=affine),
     'sep_conv_5x5': lambda channels, stride, affine: SepConv(channels, channels, 5, stride, 2, affine=affine),
     'sep_conv_7x7': lambda channels, stride, affine: SepConv(channels, channels, 7, stride, 3, affine=affine),
     'dil_conv_3x3': lambda channels, stride, affine: DilConv(channels, channels, 3, stride, 2, 2, affine=affine),  # 5x5
     'dil_conv_5x5': lambda channels, stride, affine: DilConv(channels, channels, 5, stride, 4, 2, affine=affine),  # 9x9
-    'conv_7x1_1x7': lambda channels, stride, affine: FacConv(channels, channels, 7, stride, 3, affine=affine)
+    'conv_7x1_1x7': lambda channels, stride, affine: FacConv(channels, channels, 7, stride, 3, affine=affine),
+    'nor_conv_7x7': lambda channels, stride, affine: ReLUConvBN(channels, channels, 7, stride, 3, affine=affine),
+    'nor_conv_3x3': lambda channels, stride, affine: ReLUConvBN(channels, channels, 3, stride, 1, affine=affine),
+    'nor_conv_1x1': lambda channels, stride, affine: ReLUConvBN(channels, channels, 1, stride, 0, affine=affine),
+}
+
+
+CONNECT_NAS_BENCHMARK = ['nor_conv_3x3', 'skip_connect', 'none']
+NAS_BENCH_201         = ['nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3', 'skip_connect', 'none']
+DARTS                 = ['sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5',
+                         'avg_pool_3x3', 'max_pool_3x3', 'skip_connect', 'none']
+SEARCH_SPACE2OPS = {
+    'connect-nas-bench': CONNECT_NAS_BENCHMARK,
+    'nas-bench-201': NAS_BENCH_201,
+    'darts': DARTS,
 }
 
 
@@ -161,6 +173,21 @@ class Zero(nn.Module):
         return x[:, :, ::self.stride, ::self.stride] * 0.
 
 
+class ReLUConvBN(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, affine=True):
+        super(ReLUConvBN, self).__init__()
+        self.op = nn.Sequential(
+            nn.ReLU(),
+            nn.Conv2d(in_channels, out_channels, kernel_size,
+                      stride=stride, padding=padding, dilation=1, bias=not affine),
+            nn.BatchNorm2d(out_channels, affine=affine)
+        )
+
+    def forward(self, x):
+        return self.op(x)
+
+
 class FactorizedReduce(nn.Module):
     """
     Reduce feature map size by factorized pointwise(stride=2).
@@ -181,10 +208,10 @@ class FactorizedReduce(nn.Module):
 
 class MixedOp(nn.Module):
     """ Mixed operation """
-    def __init__(self, channels, stride):
+    def __init__(self, channels, stride, search_space):
         super().__init__()
         self._ops = nn.ModuleList()
-        for primitive in gt.PRIMITIVES:
+        for primitive in SEARCH_SPACE2OPS[search_space]:
             op = OPS[primitive](channels, stride, affine=False)
             self._ops.append(op)
 

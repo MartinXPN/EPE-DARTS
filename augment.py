@@ -62,7 +62,8 @@ def train(name: str, dataset: str, genotype: str,
     loggers = [
         CSVLogger(experiment.log_dir, name='history'),
         TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
-        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='augment-epe-darts', save_code=True, notes=experiment.long_description),
+        WandbLogger(name=experiment.name, project='augment-epe-darts',
+                    save_dir=experiment.log_dir, save_code=True, notes=experiment.long_description),
         # AimLogger(experiment=experiment.name),
     ]
     for logger in loggers:
@@ -75,7 +76,10 @@ def train(name: str, dataset: str, genotype: str,
                       callbacks=[
                           DropPathCallback(max_epochs=epochs, drop_path_prob=drop_path_prob),
                           # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
-                          ModelCheckpoint(dirpath=experiment.model_save_path, filename='model-{epoch:02d}-{valid_top1:.2f}', monitor='valid_top1', save_top_k=5, verbose=True, mode='max'),
+                          ModelCheckpoint(dirpath=experiment.model_save_path,
+                                          filename='model-{epoch:02d}-{valid_top1:.2f}',
+                                          monitor='valid_top1', mode='max', save_top_k=5,
+                                          verbose=True),
                           LearningRateMonitor(logging_interval='epoch'),
                       ])
 
