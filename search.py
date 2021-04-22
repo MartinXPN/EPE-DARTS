@@ -77,7 +77,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     loggers = [
         CSVLogger(experiment.log_dir, name='history'),
         TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
-        WandbLogger(name=experiment.name, save_dir=experiment.log_dir, project='search-epe-darts', save_code=True, notes=experiment.long_description),
+        WandbLogger(name=experiment.name, project='search-epe-darts',
+                    save_dir=experiment.log_dir, save_code=True, notes=experiment.long_description),
         # AimLogger(experiment=experiment.name),
     ]
     for logger in loggers:
@@ -88,7 +89,10 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
                       max_epochs=epochs, terminate_on_nan=True,
                       callbacks=[
                           # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
-                          ModelCheckpoint(dirpath=experiment.model_save_path, filename='model-{epoch:02d}-{valid_top1:.2f}', monitor='valid_top1', save_top_k=5, verbose=True, mode='max'),
+                          ModelCheckpoint(dirpath=experiment.model_save_path,
+                                          filename='model-{epoch:02d}-{valid_top1:.2f}',
+                                          monitor='valid_top1', mode='max', save_top_k=5,
+                                          verbose=True),
                           LearningRateMonitor(logging_interval='epoch'),
                       ])
 

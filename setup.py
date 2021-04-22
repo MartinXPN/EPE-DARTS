@@ -11,6 +11,8 @@ setup(
     packages=find_packages(exclude=('tests',)),
     install_requires=[
         'entmax>=1.0.0',
+        'pyswarm>=0.6',
+        'plotly>=4.14.2',
         'graphviz>=0.16',
         'torch>=1.8.0',
         'torchvision>=0.9.1',

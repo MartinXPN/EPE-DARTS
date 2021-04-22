@@ -136,7 +136,9 @@ class EPESearch:
             scores[(alpha_normal, alpha_reduce)] = arch_scores
             torch.save(scores, self.save_path / f'random-scores-sparsity{self.sparsity}.pt')
             if np.mean(arch_scores) > best:
+                print('Best was:', best, end=' ... ')
                 best = float(np.mean(arch_scores))
+                print('Reached:', best)
                 torch.save((alpha_normal, alpha_reduce), self.save_path / f'best-sparsity{self.sparsity}.pt')
         return scores
 
