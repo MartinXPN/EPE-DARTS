@@ -121,7 +121,7 @@ class EPESearch:
 
             s = eval_score_per_class(jacobs, target, n_classes=self.n_classes)
             scores.append(s)
-            weight_runs.set_description(f'mean: {np.mean(scores):.2f}\tscore: {s:.2f}')
+            weight_runs.set_description(f'mean: {np.mean(scores):.2f}  score: {s:.2f}')
         return scores
 
     def random_search(self):
@@ -182,6 +182,7 @@ class EPESearch:
             return -np.mean(arch_scores)
 
         pso(eval_alphas, lb=low, ub=high, maxiter=self.nb_architectures)
+        return scores
 
 
 if __name__ == '__main__':

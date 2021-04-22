@@ -170,9 +170,9 @@ class SearchCNNController(pl.LightningModule):
         logits = self.forward(x)
         return self.criterion(logits, y)
 
-    def genotype(self):
-        gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2)
-        gene_reduce = gt.parse(self.alpha_reduce, search_space=self.search_space, k=2)
+    def genotype(self, algorithm: str = 'top-k'):
+        gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2, algorithm=algorithm)
+        gene_reduce = gt.parse(self.alpha_reduce, search_space=self.search_space, k=2, algorithm=algorithm)
         concat = range(2, 2 + self.n_nodes)  # concat all intermediate nodes
 
         return gt.Genotype(normal=gene_normal, normal_concat=concat,

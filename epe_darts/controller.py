@@ -99,12 +99,20 @@ class SearchController(pl.LightningModule):
     def on_validation_epoch_end(self):
         # log genotype
         epoch = self.trainer.current_epoch
-        genotype = self.net.genotype()
 
-        gt.plot(genotype.normal, f'normal-{epoch}')
-        gt.plot(genotype.reduce, f'reduction-{epoch}')
-        wandb.log({'normal-cell': wandb.Image(f'normal-{epoch}.png')})
-        wandb.log({'reduction-cell': wandb.Image(f'reduction-{epoch}.png')})
+        genotype = self.net.genotype(algorithm='top-k')
+        gt.plot(genotype.normal, f'normal-top2-{epoch}')
+        gt.plot(genotype.reduce, f'reduction-top2-{epoch}')
+        wandb.log({'normal-top2-cell': wandb.Image(f'normal-top2-{epoch}.png')})
+        wandb.log({'reduction-top2-cell': wandb.Image(f'reduction-top2-{epoch}.png')})
+        print('Genotype with top-2 connections:', genotype)
+
+        genotype = self.net.genotype(algorithm='best')
+        gt.plot(genotype.normal, f'normal-best-{epoch}')
+        gt.plot(genotype.reduce, f'reduction-best-{epoch}')
+        wandb.log({'normal-best-cell': wandb.Image(f'normal-best-{epoch}.png')})
+        wandb.log({'reduction-best-cell': wandb.Image(f'reduction-best-{epoch}.png')})
+        print('Genotype with nonzero connections:', genotype)
 
         alpha_normal, alpha_reduce = self.net.alpha_weights()
 

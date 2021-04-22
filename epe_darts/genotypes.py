@@ -53,7 +53,8 @@ def from_str(s: str) -> Genotype:
     return eval(s)
 
 
-def parse(alpha: nn.ParameterList, search_space: str, k: int) -> List[List[Tuple[str, int]]]:
+def parse(alpha: nn.ParameterList, search_space: str, k: int = 2,
+          algorithm: str = 'top-k') -> List[List[Tuple[str, int]]]:
     """
     parse continuous alpha to discrete gene.
     alpha is ParameterList:
@@ -69,7 +70,9 @@ def parse(alpha: nn.ParameterList, search_space: str, k: int) -> List[List[Tuple
         [('node2_ops_1', node_idx), ..., ('node2_ops_k', node_idx)],
         ...
     ]
-    each node has two edges (k=2) in CNN.
+
+    If algorithm = 'top-k' =>  each node has two edges (k=2) in CNN.
+    If algorithm = 'best' => each node as as many connections as there are not-none top nodes connected to it
     """
 
     gene = []
@@ -83,10 +86,19 @@ def parse(alpha: nn.ParameterList, search_space: str, k: int) -> List[List[Tuple
         edge_max, primitive_indices = torch.topk(edges[:, :-1], 1)  # ignore 'none'
         topk_edge_values, topk_edge_indices = torch.topk(edge_max.view(-1), k)
         node_gene = []
-        for edge_idx in topk_edge_indices:
-            prim_idx = primitive_indices[edge_idx]
-            prim = primitives[prim_idx]
-            node_gene.append((prim, edge_idx.item()))
+
+        if algorithm == 'top-k':
+            for edge_idx in topk_edge_indices:
+                prim_idx = primitive_indices[edge_idx]
+                prim = primitives[prim_idx]
+                node_gene.append((prim, edge_idx.item()))
+        elif algorithm == 'best':
+            for edge_idx, prim_idx in enumerate(primitive_indices):
+                prim = primitives[prim_idx]
+                if prim != 'none':
+                    node_gene.append((prim, edge_idx))
+        else:
+            raise ValueError(f'Algorithm {algorithm} not supported')
 
         gene.append(node_gene)
 

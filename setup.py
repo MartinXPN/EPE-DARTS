@@ -16,7 +16,6 @@ setup(
         'graphviz>=0.16',
         'torch>=1.8.0',
         'torchvision>=0.9.1',
-        'tensorboardX>=2.2',
         'pytorch-lightning>=1.1.0',
         'scipy>=1.5.0',
         'scikit-learn>=0.23.2',
