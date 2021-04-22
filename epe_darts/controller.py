@@ -91,7 +91,7 @@ class SearchController(pl.LightningModule):
         alpha_optim = torch.optim.Adam(self.net.alphas(), self.alpha_lr,
                                        betas=(0.5, 0.999), weight_decay=self.alpha_weight_decay)
         self.alpha_scheduler = {
-            'scheduler': torch.optim.lr_scheduler.LambdaLR(alpha_optim, lr_lambda=lambda x: self.alpha_lr),
+            'scheduler': torch.optim.lr_scheduler.LambdaLR(alpha_optim, lr_lambda=lambda x: 1),
             'interval': 'epoch',
         }
         return [w_optim, alpha_optim], [self.w_scheduler, self.alpha_scheduler]

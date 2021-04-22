@@ -139,6 +139,8 @@ class EPESearch:
                 print('Best was:', best, end=' ... ')
                 best = float(np.mean(arch_scores))
                 print('Reached:', best)
+                print('Top-k Genotype:', network.genotype(algorithm='top-k'))
+                print('Best Genotype:', network.genotype(algorithm='best'))
                 torch.save((alpha_normal, alpha_reduce), self.save_path / f'best-sparsity{self.sparsity}.pt')
         return scores
 
