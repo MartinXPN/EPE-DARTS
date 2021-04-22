@@ -83,7 +83,10 @@ def parse(alpha: nn.ParameterList, search_space: str, k: int = 2,
     # 2) Choose top-k edges per node by edge score (top-1 weight in edge)
     for edges in alpha:
         # edges: Tensor(n_edges, n_ops)
-        edge_max, primitive_indices = torch.topk(edges[:, :-1], 1)  # ignore 'none'
+        if algorithm == 'top-k':  # ignore 'none'
+            edges = edges[:, :-1]
+
+        edge_max, primitive_indices = torch.topk(edges, 1)
         topk_edge_values, topk_edge_indices = torch.topk(edge_max.view(-1), k)
         node_gene = []
 
