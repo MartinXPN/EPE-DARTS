@@ -11,6 +11,7 @@ import torch.nn as nn
 from graphviz import Digraph
 
 from epe_darts import ops
+from epe_darts.utils import PathLike
 
 Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
 
@@ -108,7 +109,7 @@ def parse(alpha: nn.ParameterList, search_space: str, k: int = 2,
     return gene
 
 
-def plot(genotype: Genotype, file_path: str, caption: Optional[str] = None):
+def plot(genotype: Genotype, file_path: PathLike, caption: Optional[str] = None):
     """ make DAG plot and save to file_path as .png """
     edge_attr = {
         'fontsize': '20',

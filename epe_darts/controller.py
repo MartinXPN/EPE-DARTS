@@ -1,4 +1,5 @@
 import copy
+from pathlib import Path
 from typing import Dict
 
 import numpy as np
@@ -14,7 +15,7 @@ from epe_darts.architect import Architect
 
 
 class SearchController(pl.LightningModule):
-    def __init__(self, net: nn.Module,
+    def __init__(self, net: nn.Module, image_log_path: Path,
                  w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
                  nesterov=False,
                  alpha_lr=3e-4, alpha_weight_decay=1e-3,
@@ -23,6 +24,9 @@ class SearchController(pl.LightningModule):
         self.save_hyperparameters('w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip',
                                   'alpha_lr', 'alpha_weight_decay', 'max_epochs')
         self.automatic_optimization = False
+
+        self.image_log_path: Path = image_log_path
+        self.image_log_path.mkdir(parents=True, exist_ok=True)
 
         self.w_lr: float = w_lr
         self.w_momentum: float = w_momentum
@@ -100,22 +104,10 @@ class SearchController(pl.LightningModule):
         # log genotype
         epoch = self.trainer.current_epoch
 
-        genotype = self.net.genotype(algorithm='top-k')
-        gt.plot(genotype.normal, f'normal-top2-{epoch}')
-        gt.plot(genotype.reduce, f'reduction-top2-{epoch}')
-        wandb.log({'normal-top2-cell': wandb.Image(f'normal-top2-{epoch}.png')})
-        wandb.log({'reduction-top2-cell': wandb.Image(f'reduction-top2-{epoch}.png')})
-        print('Genotype with top-2 connections:', genotype)
-
-        genotype = self.net.genotype(algorithm='best')
-        gt.plot(genotype.normal, f'normal-best-{epoch}')
-        gt.plot(genotype.reduce, f'reduction-best-{epoch}')
-        wandb.log({'normal-best-cell': wandb.Image(f'normal-best-{epoch}.png')})
-        wandb.log({'reduction-best-cell': wandb.Image(f'reduction-best-{epoch}.png')})
-        print('Genotype with nonzero connections:', genotype)
+        self.plot_genotype(genotype=self.net.genotype(algorithm='top-k'), name=f'top2-{epoch}')
+        self.plot_genotype(genotype=self.net.genotype(algorithm='best'),  name=f'best-{epoch}')
 
         alpha_normal, alpha_reduce = self.net.alpha_weights()
-
         self.epoch2normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in alpha_normal]
         self.epoch2reduce_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in alpha_reduce]
 
@@ -132,7 +124,7 @@ class SearchController(pl.LightningModule):
             self.log('normal_diff', normal_diff)
             self.log('reduce_diff', reduce_diff)
 
-        print(f'Sparsity: {self.net.sparsity}')
+        print(f'\nSparsity: {self.net.sparsity}')
         print("####### ALPHA #######")
         print("\n# Alpha - normal")
         for alpha in alpha_normal:
@@ -140,6 +132,15 @@ class SearchController(pl.LightningModule):
         print("\n# Alpha - reduce")
         for alpha in alpha_reduce:
             print(alpha)
+
+    def plot_genotype(self, genotype: gt.Genotype, name: str):
+        gt.plot(genotype.normal, self.image_log_path / f'normal-{name}')
+        gt.plot(genotype.reduce, self.image_log_path / f'reduction-{name}')
+
+        log_name = name.split('-')[0]
+        wandb.log({f'normal-{log_name}-cell': wandb.Image(str(self.image_log_path / f'normal-{name}.png'))})
+        wandb.log({f'reduction-{log_name}-cell': wandb.Image(str(self.image_log_path / f'reduction-{name}.png'))})
+        print(f'\nGenotype {name}:', genotype)
 
     def plot_alphas(self, epoch2alphas: Dict):
         epochs = len(epoch2alphas)

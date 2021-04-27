@@ -62,7 +62,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     net = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers, nodes, stem_multiplier,
                               search_space=search_space,
                               sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
-    model = SearchController(net,
+    model = SearchController(net, experiment.log_dir / 'cell_images',
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
                              w_grad_clip=w_grad_clip, nesterov=nesterov,
                              alpha_lr=alpha_lr, alpha_weight_decay=alpha_weight_decay,

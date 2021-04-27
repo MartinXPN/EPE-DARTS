@@ -1,11 +1,15 @@
 import os
+import pathlib
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypeVar
 
 import numpy as np
 import torch
+
+
+PathLike = TypeVar("PathLike", str, pathlib.Path, bytes, os.PathLike)
 
 
 def fix_random_seed(seed: int = 42, fix_cudnn: bool = True):
