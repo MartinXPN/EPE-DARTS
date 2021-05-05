@@ -21,7 +21,8 @@ class SearchController(pl.LightningModule):
                  alpha_lr=3e-4, alpha_weight_decay=1e-3,
                  max_epochs: int = 50):
         super().__init__()
-        self.save_hyperparameters('w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip',
+        self.save_hyperparameters('image_log_path',
+                                  'w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip',
                                   'alpha_lr', 'alpha_weight_decay', 'max_epochs')
         self.automatic_optimization = False
 
@@ -83,6 +84,9 @@ class SearchController(pl.LightningModule):
         self.log('valid_loss', loss)
         self.log('valid_top1', prec1)
         self.log('valid_top5', prec5)
+
+    def test_step(self, batch, batch_idx):
+        return self.validation_step(batch, batch_idx)
 
     def configure_optimizers(self):
         w_optim = torch.optim.SGD(self.net.weights(), self.w_lr,

@@ -16,7 +16,7 @@ from epe_darts.utils import fix_random_seed, ExperimentSetup
 def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: str = 'darts',
          batch_size: int = 64, epochs: int = 50, seed: int = 42,
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
-         init_channels: int = 16, layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
+         init_channels: int = 16, n_layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
          w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
          w_grad_clip: float = 5., nesterov: bool = False,
          sparsity: float = 4,
@@ -33,7 +33,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
     :param workers: # of workers for data loading if None will be os.cpu_count() - 1
     :param init_channels: Initial channels
-    :param layers: # of layers in the network (number of cells)
+    :param n_layers: # of layers in the network (number of cells)
     :param nodes: # of nodes in a cell
     :param stem_multiplier: Stem multiplier
     :param w_lr: Learning rate for network weights
@@ -59,7 +59,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     data.setup()
 
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
-    net = SearchCNNController(data.input_channels, init_channels, data.n_classes, layers, nodes, stem_multiplier,
+    net = SearchCNNController(data.input_channels, init_channels, data.n_classes, n_layers, nodes, stem_multiplier,
                               search_space=search_space,
                               sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
     model = SearchController(net, experiment.log_dir / 'cell_images',

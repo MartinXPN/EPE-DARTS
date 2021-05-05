@@ -119,7 +119,7 @@ class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
                  search_space='darts',
-                 sparsity=1, alpha_normal=None, alpha_reduce=None):
+                 sparsity=1, alpha_normal=None, alpha_reduce=None, **kwargs):
         super().__init__()
         self.save_hyperparameters()
 
