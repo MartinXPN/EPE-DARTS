@@ -1,6 +1,5 @@
 import itertools
 from pathlib import Path
-from pprint import pprint
 from typing import Dict
 
 import fire
@@ -22,8 +21,9 @@ fix_random_seed(42, fix_cudnn=True)
 def extract_architecture(darts_model_path: PathLike,
                          hparams_file: PathLike,
                          dataset: str,
-                         nb_architectures: int = 500,
+                         nb_architectures: int = 1000,
                          batch_size: int = 32,
+                         nb_batches: int = 10,
                          workers: int = 4,
                          data_path: Path = Path('datasets'),
                          save_path: Path = Path('epe_architecture')):
@@ -56,20 +56,24 @@ def extract_architecture(darts_model_path: PathLike,
             net.alpha_reduce[i] = nn.Parameter(torch.from_numpy(reduce))
 
         net = net.to(device)
-        x, target = next(data_iterator)
-        x = x.to(device)
-        jacobs_batch = get_batch_jacobian(net, x)
-        jacobs = jacobs_batch.reshape(jacobs_batch.size(0), -1).detach().cpu().numpy()
-        target = target.detach().cpu().numpy()
-        s = eval_score_per_class(jacobs, target, n_classes=data.n_classes)
+        net_scores = []
+        for batch in range(nb_batches):
+            x, target = next(data_iterator)
+            x = x.to(device)
+            jacobs_batch = get_batch_jacobian(net, x)
+            jacobs = jacobs_batch.reshape(jacobs_batch.size(0), -1).detach().cpu().numpy()
+            target = target.detach().cpu().numpy()
+            s = eval_score_per_class(jacobs, target, n_classes=data.n_classes)
+            net_scores.append(s)
 
+        score = float(np.mean(net_scores))
         genotype = net.genotype(algorithm='best')
-        print(s, '\t', genotype)
-        scores[f'{genotype}'] = s
+        print(f'{score:.5} \t {genotype}')
+        scores[f'{genotype}'] = score
 
     top = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:5]
     print('---- TOP 5: ----')
-    pprint(top)
+    [print(f'{s} \t {g}') for g, s in top]
 
 
 if __name__ == '__main__':
