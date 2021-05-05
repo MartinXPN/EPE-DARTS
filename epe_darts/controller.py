@@ -22,7 +22,7 @@ class SearchController(pl.LightningModule):
                  max_epochs: int = 50):
         super().__init__()
         self.save_hyperparameters('image_log_path',
-                                  'w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip',
+                                  'w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip', 'nesterov',
                                   'alpha_lr', 'alpha_weight_decay', 'max_epochs')
         self.automatic_optimization = False
 

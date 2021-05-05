@@ -32,11 +32,11 @@ def extract_architecture(darts_model_path: PathLike,
     data.setup()
     data_iterator = itertools.cycle(data.val_dataloader())
 
+    # Setup and load the DARTS network
     hparams = load_hparams_from_yaml(hparams_file)
     print('Hyper-params from', hparams_file, ':', hparams)
-
-    # Setup and load networks
-    net = SearchCNNController(input_channels=data.input_channels, n_classes=data.n_classes, n_layers=8, **hparams)
+    layers = hparams.get('n_layers', hparams.get('layers', 8))
+    net = SearchCNNController(input_channels=data.input_channels, n_classes=data.n_classes, n_layers=layers, **hparams)
     SearchController.load_from_checkpoint(darts_model_path, net=net, image_log_path=Path('alphas'))
 
     n_nodes = len(net.alpha_normal)
