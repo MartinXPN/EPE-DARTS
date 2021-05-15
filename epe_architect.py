@@ -14,19 +14,36 @@ from epe_darts.epe_nas import get_batch_jacobian, eval_score_per_class
 from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed, PathLike
 
-fix_random_seed(42, fix_cudnn=True)
-# torch.autograd.set_detect_anomaly(True)
-
 
 def extract_architecture(darts_model_path: PathLike,
                          hparams_file: PathLike,
                          dataset: str,
+                         project: str = 'epe-architect',
                          nb_architectures: int = 1000,
                          batch_size: int = 32,
                          nb_batches: int = 10,
+                         seed: int = 42,
                          workers: int = 4,
                          data_path: Path = Path('datasets'),
                          save_path: Path = Path('epe_architecture')):
+    """
+    Extract a discrete architecture from a pretrained DARTS model using EPE-NAS scoring heuristic
+
+    :param darts_model_path: Path to pretrained DARTS super-net
+    :param hparams_file: Path to hyperparams file of the search phase for DARTS super-net
+    :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
+    :param project: Name of the project (to log in wandb)
+    :param nb_architectures: Number of different architectures to try
+    :param batch_size: Batch size
+    :param nb_batches: Number of batches to run per each architecture (scores are averaged out)
+    :param seed: Random seed
+    :param workers: # of workers for data loading if None will be os.cpu_count() - 1
+    :param data_path: Path to the dataset (download in that location if not present)
+    :param save_path: Where to save the results
+    """
+    fix_random_seed(seed, fix_cudnn=True)
+    # torch.autograd.set_detect_anomaly(True)
+
     data = DataModule(dataset=dataset, data_dir=data_path, split_train=False, cutout_length=0,
                       batch_size=batch_size, workers=workers)
     data.setup()

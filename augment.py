@@ -13,7 +13,7 @@ from epe_darts.utils import fix_random_seed, ExperimentSetup
 from epe_darts import genotypes as gt
 
 
-def train(name: str, dataset: str, genotype: str,
+def train(name: str, dataset: str, genotype: str, project: str = 'augment-epe-darts',
           data_path: str = 'datasets/', batch_size: int = 96, epochs: int = 600, seed: int = 42,
           lr: float = 0.025, momentum: float = 0.9, weight_decay: float = 3e-4, grad_clip: float = 5.,
           print_freq: int = 200, gpus: Union[List[int], int] = -1,
@@ -25,6 +25,7 @@ def train(name: str, dataset: str, genotype: str,
     :param name: Experiment name
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
     :param genotype: Cell genotype
+    :param project: Name of the project (to log in wandb)
     :param data_path: Path to the dataset (download in that location if not present)
     :param batch_size: Batch size
     :param epochs: # of training epochs
@@ -62,7 +63,7 @@ def train(name: str, dataset: str, genotype: str,
     loggers = [
         CSVLogger(experiment.log_dir, name='history'),
         TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
-        WandbLogger(name=experiment.name, project='augment-epe-darts',
+        WandbLogger(name=experiment.name, project=project,
                     save_dir=experiment.log_dir, save_code=True, notes=experiment.long_description),
         # AimLogger(experiment=experiment.name),
     ]

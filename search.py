@@ -13,7 +13,8 @@ from epe_darts.controller import SearchController
 from epe_darts.utils import fix_random_seed, ExperimentSetup
 
 
-def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: str = 'darts',
+def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = 'search-epe-darts',
+         search_space: str = 'darts',
          batch_size: int = 64, epochs: int = 50, seed: int = 42,
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
          init_channels: int = 16, n_layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
@@ -25,6 +26,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     :param name: Experiment name
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
     :param data_path: Path to the dataset (download in that location if not present)
+    :param project: Name of the project (to log in wandb)
     :param search_space: On which search space to perform the search: {darts, nas-bench-201, connect-nas-bench}
     :param batch_size: Batch size
     :param epochs: # of training epochs
@@ -77,7 +79,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', search_space: st
     loggers = [
         CSVLogger(experiment.log_dir, name='history'),
         TensorBoardLogger(experiment.log_dir, name=experiment.name, default_hp_metric=False),
-        WandbLogger(name=experiment.name, project='search-epe-darts',
+        WandbLogger(name=experiment.name, project=project,
                     save_dir=experiment.log_dir, save_code=True, notes=experiment.long_description),
         # AimLogger(experiment=experiment.name),
     ]
