@@ -1,6 +1,6 @@
 import itertools
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import fire
 import numpy as np
@@ -15,7 +15,7 @@ from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed, PathLike
 
 
-def extract_architecture(darts_model_path: PathLike,
+def extract_architecture(darts_model_path: Optional[PathLike],
                          hparams_file: PathLike,
                          dataset: str,
                          project: str = 'epe-architect',
@@ -28,6 +28,7 @@ def extract_architecture(darts_model_path: PathLike,
                          save_path: Path = Path('epe_architecture')):
     """
     Extract a discrete architecture from a pretrained DARTS model using EPE-NAS scoring heuristic
+    if the model is provided. Otherwise generate a random model
 
     :param darts_model_path: Path to pretrained DARTS super-net
     :param hparams_file: Path to hyperparams file of the search phase for DARTS super-net
@@ -51,14 +52,19 @@ def extract_architecture(darts_model_path: PathLike,
 
     # Setup and load the DARTS network
     hparams = load_hparams_from_yaml(hparams_file)
+    hparams['input_channels'] = data.input_channels
+    hparams['n_classes'] = data.n_classes
+    hparams['n_layers'] = hparams.get('n_layers', hparams.get('layers', 8))
     print('Hyper-params from', hparams_file, ':', hparams)
-    layers = hparams.get('n_layers', hparams.get('layers', 8))
-    net = SearchCNNController(input_channels=data.input_channels, n_classes=data.n_classes, n_layers=layers, **hparams)
-    SearchController.load_from_checkpoint(darts_model_path, net=net, image_log_path=Path('alphas'))
+
+    net = SearchCNNController(**hparams)
+    if darts_model_path is not None:
+        SearchController.load_from_checkpoint(darts_model_path, net=net, image_log_path=Path('alphas'))
+        print('Loaded the DARTS model')
 
     n_nodes = len(net.alpha_normal)
     n_ops = net.alpha_normal[0].shape[-1]
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f'#Nodes: {n_nodes}, #Ops: {n_ops}, device: {device}')
 
     scores: Dict[str, float] = {}
