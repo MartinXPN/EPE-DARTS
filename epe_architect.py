@@ -91,7 +91,7 @@ def extract_architecture(darts_model_path: Optional[PathLike],
 
         score = float(np.mean(net_scores))
         genotype = net.genotype(algorithm='best')
-        print(f'{score:.5} \t {genotype}')
+        print(f'[{architecture}/{nb_architectures}] \t {score:.5} \t {genotype}')
         scores[f'{genotype}'] = score
 
     top = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:5]
