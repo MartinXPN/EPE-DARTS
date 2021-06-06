@@ -1,5 +1,7 @@
 import itertools
+import random
 from pathlib import Path
+from pprint import pprint
 from typing import Dict, Optional
 
 import fire
@@ -13,6 +15,63 @@ from epe_darts.data import DataModule
 from epe_darts.epe_nas import get_batch_jacobian, eval_score_per_class
 from epe_darts.search_cnn import SearchCNNController
 from epe_darts.utils import fix_random_seed, PathLike
+
+
+def evaluate(net: SearchCNNController, device, data_iterator, n_classes, nb_batches: int):
+    net = net.to(device)
+    net_scores = []
+    for batch in range(nb_batches):
+        x, target = next(data_iterator)
+        x = x.to(device)
+        jacobs_batch = get_batch_jacobian(net, x)
+        jacobs = jacobs_batch.reshape(jacobs_batch.size(0), -1).detach().cpu().numpy()
+        target = target.detach().cpu().numpy()
+        s = eval_score_per_class(jacobs, target, n_classes=n_classes)
+        net_scores.append(s)
+
+    score = float(np.mean(net_scores))
+    return score
+
+
+def extract_best_connections(node2: int, alphas, net_alphas,
+                             net: SearchCNNController, device, data_iterator, n_classes, nb_batches: int,
+                             nb_connections: int = 2):
+    """ Extracts best `nb_connections` source connections for target node `node2` """
+    print('Alphas:', alphas)
+    n_ops = len(alphas[node2 - 2][0])
+    node_connections = {}  # [node1] -> [op_id]
+    for connection_i in range(nb_connections):
+        best_connection = None
+        node_scores = {}  # For logging
+        for normal_node1 in range(node2):
+            if normal_node1 in node_connections:
+                continue
+
+            alpha_weights = np.copy(alphas[node2 - 2])
+            node_scores[normal_node1] = {}
+            for op_id in range(n_ops):
+                alpha_weights[normal_node1] = 0
+                alpha_weights[normal_node1][op_id] = 1.
+
+                net_alphas[node2 - 2] = nn.Parameter(torch.from_numpy(alpha_weights))
+                score = evaluate(net, device, data_iterator=data_iterator,  n_classes=n_classes, nb_batches=nb_batches)
+                if best_connection is None or best_connection[-1] < score:
+                    best_connection = (normal_node1, op_id, score)
+                node_scores[normal_node1][op_id] = score
+                pprint(node_scores)
+                print('----------------')
+
+        print('Best Connection:', best_connection)
+        node_connections[best_connection[0]] = best_connection[1]
+
+    alpha_weights = alphas[node2 - 2] * 0
+    for normal_node1 in range(node2):
+        if normal_node1 in node_connections:
+            op_id = node_connections[normal_node1]
+            alpha_weights[normal_node1][op_id] = 1
+
+    print('node2 alphas:', alpha_weights)
+    return alpha_weights
 
 
 def extract_architecture(darts_model_path: Optional[PathLike],
@@ -67,31 +126,32 @@ def extract_architecture(darts_model_path: Optional[PathLike],
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f'#Nodes: {n_nodes}, #Ops: {n_ops}, device: {device}')
 
+    normal_order = list(range(2, 6))
+    reduce_order = list(range(2, 6))
+    random.shuffle(normal_order)
+    random.shuffle(reduce_order)
+    print('Normal node order:', normal_order)
+    print('Reduce node order:', reduce_order)
+
     scores: Dict[str, float] = {}
-    for architecture in range(nb_architectures):
-        for i in range(n_nodes):
-            p = 3 / ((i + 2) * n_ops)
-            normal = np.random.choice([0., 1.], size=(i + 2, n_ops), p=[1 - p, p])
-            reduce = np.random.choice([0., 1.], size=(i + 2, n_ops), p=[1 - p, p])
-            normal[:, -1] = 0.5
-            reduce[:, -1] = 0.5
-            net.alpha_normal[i] = nn.Parameter(torch.from_numpy(normal))
-            net.alpha_reduce[i] = nn.Parameter(torch.from_numpy(reduce))
+    alpha_normal = [a.detach().cpu().numpy() for a in net.alpha_normal]
+    alpha_reduce = [a.detach().cpu().numpy() for a in net.alpha_reduce]
 
-        net = net.to(device)
-        net_scores = []
-        for batch in range(nb_batches):
-            x, target = next(data_iterator)
-            x = x.to(device)
-            jacobs_batch = get_batch_jacobian(net, x)
-            jacobs = jacobs_batch.reshape(jacobs_batch.size(0), -1).detach().cpu().numpy()
-            target = target.detach().cpu().numpy()
-            s = eval_score_per_class(jacobs, target, n_classes=data.n_classes)
-            net_scores.append(s)
+    # Iterate over all target normal and reduction nodes (in the provided order)
+    for ni, (normal_node2, reduce_node2) in enumerate(zip(normal_order, reduce_order)):
+        normal_weights = extract_best_connections(node2=normal_node2, alphas=alpha_normal, net_alphas=net.alpha_normal,
+                                                  net=net, device=device, data_iterator=data_iterator,
+                                                  n_classes=data.n_classes, nb_batches=nb_batches, nb_connections=2)
+        net.alpha_normal[normal_node2 - 2] = nn.Parameter(torch.from_numpy(normal_weights))
 
-        score = float(np.mean(net_scores))
+        reduce_weights = extract_best_connections(node2=reduce_node2, alphas=alpha_reduce, net_alphas=net.alpha_reduce,
+                                                  net=net, device=device, data_iterator=data_iterator,
+                                                  n_classes=data.n_classes, nb_batches=nb_batches, nb_connections=2)
+        net.alpha_reduce[reduce_node2 - 2] = nn.Parameter(torch.from_numpy(reduce_weights))
+
+        score = evaluate(net, device, data_iterator=data_iterator, n_classes=data.n_classes, nb_batches=nb_batches)
         genotype = net.genotype(algorithm='best')
-        print(f'[{architecture}/{nb_architectures}] \t {score:.5} \t {genotype}')
+        print(f'[{ni}/{len(normal_order)}] \t {score:.5} \t {genotype}')
         scores[f'{genotype}'] = score
 
     top = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:5]
