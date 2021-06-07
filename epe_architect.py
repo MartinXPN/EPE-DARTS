@@ -150,7 +150,7 @@ def extract_architecture(darts_model_path: Optional[PathLike],
         net.alpha_reduce[reduce_node2 - 2] = nn.Parameter(torch.from_numpy(reduce_weights))
 
         score = evaluate(net, device, data_iterator=data_iterator, n_classes=data.n_classes, nb_batches=nb_batches)
-        genotype = net.genotype(algorithm='best')
+        genotype = net.genotype(algorithm='top-k')
         print(f'[{ni}/{len(normal_order)}] \t {score:.5} \t {genotype}')
         scores[f'{genotype}'] = score
 
