@@ -141,8 +141,8 @@ class SearchCNNController(pl.LightningModule):
                 self.alpha_reduce.append(nn.Parameter(reduce))
         else:
             for i in range(n_nodes):
-                self.alpha_normal.append(nn.Parameter(torch.randn(i + 2, n_ops)))  # * 1e-3 *
-                self.alpha_reduce.append(nn.Parameter(torch.randn(i + 2, n_ops)))  # * 1e-3 *
+                self.alpha_normal.append(nn.Parameter(torch.randn(i + 2, n_ops) * 1e-3))
+                self.alpha_reduce.append(nn.Parameter(torch.randn(i + 2, n_ops) * 1e-3))
 
         # setup alphas list
         self._alphas = []

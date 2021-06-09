@@ -8,6 +8,8 @@ def get_batch_jacobian(net: nn.Module, x: torch.Tensor):
     x.requires_grad = True
 
     y = net(x)
+    if isinstance(y, (list, tuple)):
+        y = y[0]
     y.backward(torch.ones_like(y))
     jacob = x.grad.detach()
 
