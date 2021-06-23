@@ -105,9 +105,14 @@ class SearchController(pl.LightningModule):
         return [w_optim, alpha_optim], [self.w_scheduler, self.alpha_scheduler]
 
     def on_validation_epoch_end(self):
-        # log genotype
         epoch = self.trainer.current_epoch
 
+        # Remove 2 worst connections
+        if epoch >= 0:
+            self.net.remove_worst_connection()
+            self.net.remove_worst_connection()
+
+        # log genotype
         self.plot_genotype(genotype=self.net.genotype(algorithm='top-k'), name=f'top2-{epoch}')
         self.plot_genotype(genotype=self.net.genotype(algorithm='best'),  name=f'best-{epoch}')
 
@@ -129,6 +134,14 @@ class SearchController(pl.LightningModule):
             self.log('reduce_diff', reduce_diff)
 
         print(f'\nSparsity: {self.net.sparsity}')
+        print("####### MASK #######")
+        print("\n# Alpha - mask")
+        for mask in self.net.normal_mask:
+            print(mask)
+        print("\n# Alpha - reduce")
+        for mask in self.net.reduce_mask:
+            print(mask)
+
         print("####### ALPHA #######")
         print("\n# Alpha - normal")
         for alpha in alpha_normal:

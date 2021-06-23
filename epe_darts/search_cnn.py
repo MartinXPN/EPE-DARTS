@@ -1,11 +1,14 @@
 """ CNN for architecture search """
+import copy
+from typing import List
+
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from entmax import entmax_bisect
 
 from epe_darts import genotypes as gt, ops
+from epe_darts.functional import softmax
 
 
 class SearchCell(nn.Module):
@@ -119,7 +122,7 @@ class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
                  search_space='darts',
-                 sparsity=1, alpha_normal=None, alpha_reduce=None, **kwargs):
+                 sparsity=1, alpha_normal=None, alpha_reduce=None, mask_alphas=True, **kwargs):
         super().__init__()
         self.save_hyperparameters()
 
@@ -128,21 +131,30 @@ class SearchCNNController(pl.LightningModule):
         self.n_nodes: int = n_nodes
         self.criterion = nn.CrossEntropyLoss()
         self.sparsity = sparsity
+        self.mask_alphas = mask_alphas
 
         # initialize alphas
         n_ops = len(self.primitives)
         self.alpha_normal = nn.ParameterList()
         self.alpha_reduce = nn.ParameterList()
+        self.normal_mask = nn.ParameterList()
+        self.reduce_mask = nn.ParameterList()
 
         if alpha_normal is not None and alpha_reduce is not None:
             # print('Using provided alphas...')
             for normal, reduce in zip(alpha_normal, alpha_reduce):
                 self.alpha_normal.append(nn.Parameter(normal))
                 self.alpha_reduce.append(nn.Parameter(reduce))
+                self.normal_mask.append(nn.Parameter(torch.ones_like(normal, dtype=torch.bool), requires_grad=False))
+                self.reduce_mask.append(nn.Parameter(torch.ones_like(reduce, dtype=torch.bool), requires_grad=False))
         else:
             for i in range(n_nodes):
-                self.alpha_normal.append(nn.Parameter(torch.randn(i + 2, n_ops)))  # * 1e-3 *
-                self.alpha_reduce.append(nn.Parameter(torch.randn(i + 2, n_ops)))  # * 1e-3 *
+                normal = nn.Parameter(torch.randn(i + 2, n_ops) * 1e-3)
+                reduce = nn.Parameter(torch.randn(i + 2, n_ops) * 1e-3)
+                self.alpha_normal.append(normal)
+                self.alpha_reduce.append(reduce)
+                self.normal_mask.append(nn.Parameter(torch.ones_like(normal, dtype=torch.bool), requires_grad=False))
+                self.reduce_mask.append(nn.Parameter(torch.ones_like(reduce, dtype=torch.bool), requires_grad=False))
 
         # setup alphas list
         self._alphas = []
@@ -155,11 +167,13 @@ class SearchCNNController(pl.LightningModule):
 
     def alpha_weights(self):
         if self.sparsity == 1:
-            weights_normal = [F.softmax(alpha, dim=-1) for alpha in self.alpha_normal]
-            weights_reduce = [F.softmax(alpha, dim=-1) for alpha in self.alpha_reduce]
-        else:
+            weights_normal = [softmax(alpha, mask, dim=-1) for alpha, mask in zip(self.alpha_normal, self.normal_mask)]
+            weights_reduce = [softmax(alpha, mask, dim=-1) for alpha, mask in zip(self.alpha_reduce, self.reduce_mask)]
+        elif not self.mask_alphas:
             weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_normal]
             weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_reduce]
+        else:
+            raise ValueError(f'Does not support sparsity: {self.sparsity} and alpha-masking: {self.mask_alphas}')
         return weights_normal, weights_reduce
 
     def forward(self, x):
@@ -169,6 +183,24 @@ class SearchCNNController(pl.LightningModule):
     def loss(self, x, y):
         logits = self.forward(x)
         return self.criterion(logits, y)
+
+    def remove_worst_connection(self) -> None:
+        weights_normal, weights_reduce = self.alpha_weights()
+
+        def remove(alphas: List[torch.Tensor], masks: nn.ParameterList):
+            lowest_idx = None
+            for i, (alpha, mask) in enumerate(zip(alphas, masks)):
+                alpha_cp = copy.deepcopy(alpha)
+                alpha_cp[~mask] = 1000
+                vals, cols = alpha_cp.min(dim=-1)
+                val, row = vals.min(dim=-1)
+                col = cols[row]
+                if lowest_idx is None or alphas[lowest_idx[0]][lowest_idx[1]] > val:
+                    lowest_idx = i, (row, col)
+            masks[lowest_idx[0]][lowest_idx[1]] = False
+
+        remove(weights_normal, self.normal_mask)
+        remove(weights_reduce, self.reduce_mask)
 
     def genotype(self, algorithm: str = 'top-k'):
         gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2, algorithm=algorithm)

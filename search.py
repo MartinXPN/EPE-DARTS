@@ -20,7 +20,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
          init_channels: int = 16, n_layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
          w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
          w_grad_clip: float = 5., nesterov: bool = False,
-         sparsity: float = 4,
+         sparsity: float = 1,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
     """
     :param name: Experiment name
