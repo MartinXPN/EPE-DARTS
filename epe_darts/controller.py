@@ -108,7 +108,7 @@ class SearchController(pl.LightningModule):
         epoch = self.trainer.current_epoch
 
         # Remove 2 worst connections
-        if epoch >= 0:
+        if epoch > 0:
             self.net.remove_worst_connection()
             self.net.remove_worst_connection()
 
