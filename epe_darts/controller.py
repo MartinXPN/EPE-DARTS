@@ -107,9 +107,9 @@ class SearchController(pl.LightningModule):
     def on_validation_epoch_end(self):
         epoch = self.trainer.current_epoch
 
-        # Remove 2 worst connections
+        # Remove the worst connection
         if epoch > 0:
-            self.net.remove_worst_connection()
+            # TODO: Pass how many connections to remove
             self.net.remove_worst_connection()
 
         # log genotype

@@ -8,7 +8,7 @@ import torch.nn as nn
 from entmax import entmax_bisect
 
 from epe_darts import genotypes as gt, ops
-from epe_darts.functional import softmax
+from epe_darts.functional import softmax, sigmoid
 
 
 class SearchCell(nn.Module):
@@ -166,7 +166,10 @@ class SearchCNNController(pl.LightningModule):
                              search_space=search_space)
 
     def alpha_weights(self):
-        if self.sparsity == 1:
+        if self.sparsity == -1:
+            weights_normal = [sigmoid(alpha, mask) for alpha, mask in zip(self.alpha_normal, self.normal_mask)]
+            weights_reduce = [sigmoid(alpha, mask) for alpha, mask in zip(self.alpha_reduce, self.reduce_mask)]
+        elif self.sparsity == 1:
             weights_normal = [softmax(alpha, mask, dim=-1) for alpha, mask in zip(self.alpha_normal, self.normal_mask)]
             weights_reduce = [softmax(alpha, mask, dim=-1) for alpha, mask in zip(self.alpha_reduce, self.reduce_mask)]
         elif not self.mask_alphas:
