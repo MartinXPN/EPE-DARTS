@@ -188,6 +188,8 @@ class SearchCNNController(pl.LightningModule):
         return self.criterion(logits, y)
 
     def remove_worst_connection(self) -> None:
+        if not self.mask_alphas:
+            raise ValueError('Cannot remove a connection when the alphas are set to be not masked')
         weights_normal, weights_reduce = self.alpha_weights()
 
         def remove(alphas: List[torch.Tensor], masks: nn.ParameterList):
