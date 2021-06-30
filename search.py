@@ -21,7 +21,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
          w_lr: float = 0.025, w_lr_min: float = 0.001, w_momentum: float = 0.9, w_weight_decay: float = 3e-4,
          w_grad_clip: float = 5., nesterov: bool = False,
          sparsity: float = 1,
-         alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None):
+         alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None,
+         mask_alphas: bool = False):
     """
     :param name: Experiment name
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
@@ -48,6 +49,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
     :param alpha_lr: Learning rate for alphas
     :param alpha_weight_decay: Weight decay for alphas
     :param alphas_path: Optional path for initial alphas (will be loaded as a torch file)
+    :param mask_alphas: Wheter to mask alphas and prune them or no
     """
     hyperparams = locals()
     # set seed
@@ -63,7 +65,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
     net = SearchCNNController(data.input_channels, init_channels, data.n_classes, n_layers, nodes, stem_multiplier,
                               search_space=search_space,
-                              sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce)
+                              sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce,
+                              mask_alphas=mask_alphas)
     model = SearchController(net, experiment.log_dir / 'cell_images',
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
                              w_grad_clip=w_grad_clip, nesterov=nesterov,

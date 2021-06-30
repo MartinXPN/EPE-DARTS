@@ -179,6 +179,11 @@ class SearchCNNController(pl.LightningModule):
             raise ValueError(f'Does not support sparsity: {self.sparsity} and alpha-masking: {self.mask_alphas}')
         return weights_normal, weights_reduce
 
+    def raw_alphas(self):
+        normal = [alpha * mask.float() for alpha, mask in zip(self.alpha_normal, self.normal_mask)]
+        reduce = [alpha * mask.float() for alpha, mask in zip(self.alpha_reduce, self.reduce_mask)]
+        return normal, reduce
+
     def forward(self, x):
         weights_normal, weights_reduce = self.alpha_weights()
         return self.net(x, weights_normal, weights_reduce)
