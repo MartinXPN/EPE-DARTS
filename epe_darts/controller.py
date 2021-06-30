@@ -4,6 +4,7 @@ from typing import Dict
 
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -41,6 +42,8 @@ class SearchController(pl.LightningModule):
 
         self.epoch2normal_alphas: Dict = {}
         self.epoch2reduce_alphas: Dict = {}
+        self.epoch2raw_normal_alphas: Dict = {}
+        self.epoch2raw_reduce_alphas: Dict = {}
 
         self.net: nn.Module = net
         self.net_copy: nn.Module = copy.deepcopy(net)
@@ -117,14 +120,22 @@ class SearchController(pl.LightningModule):
         self.plot_genotype(genotype=self.net.genotype(algorithm='best'),  name=f'best-{epoch}')
 
         alpha_normal, alpha_reduce = self.net.alpha_weights()
+        raw_alpha_normal, raw_alpha_reduce = self.net.raw_alphas()
+
         self.epoch2normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in alpha_normal]
         self.epoch2reduce_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in alpha_reduce]
+        self.epoch2raw_normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in raw_alpha_normal]
+        self.epoch2raw_normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in raw_alpha_reduce]
 
         normal_fig = self.plot_alphas(self.epoch2normal_alphas)
         reduce_fig = self.plot_alphas(self.epoch2reduce_alphas)
+        raw_normal_fig = self.plot_alphas(self.epoch2raw_normal_alphas)
+        raw_reduce_fig = self.plot_alphas(self.epoch2raw_normal_alphas)
 
         wandb.log({'Normal cell alpha change throughout epochs': normal_fig})
         wandb.log({'Reduce cell alpha change throughout epochs': reduce_fig})
+        wandb.log({'Normal cell raw alpha values throughout epochs': raw_normal_fig})
+        wandb.log({'Reduce cell raw alpha values throughout epochs': raw_reduce_fig})
         if epoch != 0:
             normal_diff = np.sum([np.sum(np.abs(cur - prev)) for cur, prev in zip(self.epoch2normal_alphas[epoch],
                                                                                   self.epoch2normal_alphas[epoch - 1])])
@@ -173,7 +184,10 @@ class SearchController(pl.LightningModule):
                     fig.add_trace(
                         go.Scatter(x=list(range(epochs)),
                                    y=[epoch2alphas[epoch][node1 - 2][node2][connection_id] for epoch in range(epochs)],
-                                   name=connection_name),
+                                   name=connection_name,
+                                   legendgroup=connection_name,
+                                   showlegend=node1 == 2 and node2 == 0,
+                                   line=dict(color=px.colors.qualitative.Plotly[connection_id])),
                         row=node1 - 1,
                         col=node2 + 1,
                     )
