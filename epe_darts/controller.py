@@ -125,12 +125,12 @@ class SearchController(pl.LightningModule):
         self.epoch2normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in alpha_normal]
         self.epoch2reduce_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in alpha_reduce]
         self.epoch2raw_normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in raw_alpha_normal]
-        self.epoch2raw_normal_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in raw_alpha_reduce]
+        self.epoch2raw_reduce_alphas[epoch] = [alpha.detach().cpu().numpy() for alpha in raw_alpha_reduce]
 
         normal_fig = self.plot_alphas(self.epoch2normal_alphas)
         reduce_fig = self.plot_alphas(self.epoch2reduce_alphas)
         raw_normal_fig = self.plot_alphas(self.epoch2raw_normal_alphas)
-        raw_reduce_fig = self.plot_alphas(self.epoch2raw_normal_alphas)
+        raw_reduce_fig = self.plot_alphas(self.epoch2raw_reduce_alphas)
 
         wandb.log({'Normal cell alpha change throughout epochs': normal_fig})
         wandb.log({'Reduce cell alpha change throughout epochs': reduce_fig})
