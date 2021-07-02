@@ -6,18 +6,13 @@ class Architect:
     """ Compute gradients of alphas """
 
     def __init__(self, net,  v_net, w_momentum, w_weight_decay):
-        """
-        Args:
-            net
-            w_momentum: weights momentum
-        """
         super().__init__()
         self.net = net
         self.v_net = v_net
         self.w_momentum = w_momentum
         self.w_weight_decay = w_weight_decay
 
-    def virtual_step(self, trn_X, trn_y, xi, w_optim):
+    def virtual_step(self, trn_X, trn_y, lr, w_optim):
         """
         Compute unrolled weight w' (virtual step)
 
@@ -27,9 +22,8 @@ class Architect:
         3) compute gradient (by backprop)
         4) update gradient
 
-        Args:
-            xi: learning rate for virtual gradient step (same as weights lr)
-            w_optim: weights optimizer
+        :param lr: learning rate for virtual gradient step (same as weights lr)
+        :param w_optim: weights optimizer
         """
         # forward & calc loss
         loss = self.net.loss(trn_X, trn_y)  # L_trn(w)
@@ -44,20 +38,20 @@ class Architect:
             # be iterated also.
             for w, vw, g in zip(self.net.weights(), self.v_net.weights(), gradients):
                 m = w_optim.state[w].get('momentum_buffer', 0.) * self.w_momentum
-                vw.copy_(w - xi * (m + g + self.w_weight_decay * w))
+                vw.copy_(w - lr * (m + g + self.w_weight_decay * w))
 
             # synchronize alphas
             for a, va in zip(self.net.alphas(), self.v_net.alphas()):
                 va.copy_(a)
 
-    def unrolled_backward(self, trn_X, trn_y, val_X, val_y, xi, w_optim):
+    def unrolled_backward(self, trn_X, trn_y, val_X, val_y, lr, w_optim):
         """ Compute unrolled loss and backward its gradients
-        Args:
-            xi: learning rate for virtual gradient step (same as net lr)
-            w_optim: weights optimizer - for virtual step
+
+        :param lr: learning rate for virtual gradient step (same as net lr)
+        :param w_optim: weights optimizer - for virtual step
         """
         # do virtual step (calc w`)
-        self.virtual_step(trn_X, trn_y, xi, w_optim)
+        self.virtual_step(trn_X, trn_y, lr, w_optim)
 
         # calc unrolled loss
         loss = self.v_net.loss(val_X, val_y)  # L_val(w`)
@@ -74,7 +68,35 @@ class Architect:
         # update final gradient = dalpha - xi*hessian
         with torch.no_grad():
             for alpha, da, h in zip(self.net.alphas(), dalpha, hessian):
-                alpha.grad = da - xi * h
+                alpha.grad = da - lr * h
+
+    def finite_difference(self, dw, inputs, labels, eps: float):
+        """
+        Computes finite difference approximation with respect to alphas: f'(x) = [f(x+eps) - f(x)] / eps
+        :ref: https://en.wikipedia.org/wiki/Finite_difference
+        In our context
+            * f is the self.net and
+            * x is the w (self.net.weights())
+            * gradient is computed with respect to alphas (self.net.alphas())
+
+        dw = dw` { L_val(w`, alpha) }
+        w+ = w + eps * dw
+        """
+        # w+ = w + eps*dw`
+        with torch.no_grad():
+            for p, d in zip(self.net.weights(), dw):
+                p += eps * d
+
+        # compute loss and the gradient with respect to alphas
+        loss = self.net.loss(inputs, labels)
+        dalpha = torch.autograd.grad(loss, self.net.alphas())  # dalpha { Loss(w+, alpha) }
+
+        # recover w
+        with torch.no_grad():
+            for p, d in zip(self.net.weights(), dw):
+                p -= eps * d
+
+        return tuple(d / abs(eps) for d in dalpha)
 
     def compute_hessian(self, dw, trn_X, trn_y):
         """
@@ -87,24 +109,8 @@ class Architect:
         norm = torch.cat([w.view(-1) for w in dw]).norm()
         eps = 0.01 / norm
 
-        # w+ = w + eps*dw`
-        with torch.no_grad():
-            for p, d in zip(self.net.weights(), dw):
-                p += eps * d
-        loss = self.net.loss(trn_X, trn_y)
-        dalpha_pos = torch.autograd.grad(loss, self.net.alphas())  # dalpha { L_trn(w+) }
+        dalpha_pos = self.finite_difference(dw, trn_X, trn_y, eps)
+        dalpha_neg = self.finite_difference(dw, trn_X, trn_y, -eps)
 
-        # w- = w - eps*dw`
-        with torch.no_grad():
-            for p, d in zip(self.net.weights(), dw):
-                p -= 2. * eps * d
-        loss = self.net.loss(trn_X, trn_y)
-        dalpha_neg = torch.autograd.grad(loss, self.net.alphas())  # dalpha { L_trn(w-) }
-
-        # recover w
-        with torch.no_grad():
-            for p, d in zip(self.net.weights(), dw):
-                p += eps * d
-
-        hessian = [(p - n) / (2. * eps) for p, n in zip(dalpha_pos, dalpha_neg)]
+        hessian = [(p - n) / 2. for p, n in zip(dalpha_pos, dalpha_neg)]
         return hessian
