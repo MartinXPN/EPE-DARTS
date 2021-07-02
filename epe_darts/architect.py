@@ -63,8 +63,7 @@ class Architect:
         dalpha = v_grads[:len(v_alphas)]
         dw = v_grads[len(v_alphas):]
 
-        hessian = self.compute_hessian(dw, trn_X, trn_y)
-        print(hessian)
+        hessian = self.amended_gradient(dw, trn_X, trn_y)
 
         # update final gradient = dalpha - lr*hessian
         with torch.no_grad():
@@ -103,12 +102,9 @@ class Architect:
 
         return res
 
-    def amended_gradient(self, dw, trn_X, trn_y, epsilon: float = 0.01):
+    def amended_gradient(self, dw, trn_X, trn_y, epsilon: float = 0.01, amend: float = 0.1):
         """
         dw = dw` { L_val(w`, alpha) }
-        w+ = w + eps * dw
-        w- = w - eps * dw
-        hessian = (dalpha { L_trn(w+, alpha) } - dalpha { L_trn(w-, alpha) }) / (2*eps)
         eps = 0.01 / ||dw||
         """
         norm = torch.cat([w.view(-1) for w in dw]).norm()
@@ -118,7 +114,7 @@ class Architect:
         dw_neg = self.finite_difference(dw, trn_X, trn_y, -eps, wrt='weights')
         dalpha_pos = self.finite_difference([(wp - wn) / 2 for wp, wn in zip(dw_pos, dw_neg)], trn_X, trn_y, 1, wrt='alpha')
         dalpha_neg = self.finite_difference([(wp - wn) / 2 for wp, wn in zip(dw_pos, dw_neg)], trn_X, trn_y, -1, wrt='alpha')
-        hessian = [(p - n) / (2. * eps) for p, n in zip(dalpha_pos, dalpha_neg)]
+        hessian = [-amend * (p - n) / (2. * eps) for p, n in zip(dalpha_pos, dalpha_neg)]
         return hessian
 
     def compute_hessian(self, dw, trn_X, trn_y, epsilon: float = 0.01):
