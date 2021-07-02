@@ -64,15 +64,16 @@ class Architect:
         dw = v_grads[len(v_alphas):]
 
         hessian = self.compute_hessian(dw, trn_X, trn_y)
+        print(hessian)
 
-        # update final gradient = dalpha - xi*hessian
+        # update final gradient = dalpha - lr*hessian
         with torch.no_grad():
             for alpha, da, h in zip(self.net.alphas(), dalpha, hessian):
                 alpha.grad = da - lr * h
 
-    def finite_difference(self, dw, inputs, labels, eps: float):
+    def finite_difference(self, dw, inputs, labels, eps: float, wrt: str = 'alpha'):
         """
-        Computes finite difference approximation with respect to alphas: f'(x) = [f(x+eps) - f(x)] / eps
+        Computes finite difference approximation with respect to `wrt` parameter: f'(x) = [f(x+eps) - f(x)] / eps
         :ref: https://en.wikipedia.org/wiki/Finite_difference
         In our context
             * f is the self.net and
@@ -81,24 +82,28 @@ class Architect:
 
         dw = dw` { L_val(w`, alpha) }
         w+ = w + eps * dw
+        :returns: gradient with respect to `wrt` of f(x + eps) = self.net( self.net.weights() + eps )
         """
         # w+ = w + eps*dw`
         with torch.no_grad():
-            for p, d in zip(self.net.weights(), dw):
-                p += eps * d
+            for w, d in zip(self.net.weights(), dw):
+                w += eps * d
 
         # compute loss and the gradient with respect to alphas
         loss = self.net.loss(inputs, labels)
-        dalpha = torch.autograd.grad(loss, self.net.alphas())  # dalpha { Loss(w+, alpha) }
+        if wrt == 'alpha':      res = torch.autograd.grad(loss, self.net.alphas())   # grad { Loss(w+, alpha) }
+        elif wrt == 'weights':  res = torch.autograd.grad(loss, self.net.weights())  # grad { Loss(w+, weights) }
+        else:
+            raise ValueError(f'Computing gradient with respect to {wrt} is not supported')
 
         # recover w
         with torch.no_grad():
-            for p, d in zip(self.net.weights(), dw):
-                p -= eps * d
+            for w, d in zip(self.net.weights(), dw):
+                w -= eps * d
 
-        return tuple(d / abs(eps) for d in dalpha)
+        return res
 
-    def compute_hessian(self, dw, trn_X, trn_y):
+    def amended_gradient(self, dw, trn_X, trn_y, epsilon: float = 0.01):
         """
         dw = dw` { L_val(w`, alpha) }
         w+ = w + eps * dw
@@ -107,10 +112,27 @@ class Architect:
         eps = 0.01 / ||dw||
         """
         norm = torch.cat([w.view(-1) for w in dw]).norm()
-        eps = 0.01 / norm
+        eps = epsilon / norm
 
-        dalpha_pos = self.finite_difference(dw, trn_X, trn_y, eps)
-        dalpha_neg = self.finite_difference(dw, trn_X, trn_y, -eps)
+        dw_pos = self.finite_difference(dw, trn_X, trn_y, eps, wrt='weights')
+        dw_neg = self.finite_difference(dw, trn_X, trn_y, -eps, wrt='weights')
+        dalpha_pos = self.finite_difference([(wp - wn) / 2 for wp, wn in zip(dw_pos, dw_neg)], trn_X, trn_y, 1, wrt='alpha')
+        dalpha_neg = self.finite_difference([(wp - wn) / 2 for wp, wn in zip(dw_pos, dw_neg)], trn_X, trn_y, -1, wrt='alpha')
+        hessian = [(p - n) / (2. * eps) for p, n in zip(dalpha_pos, dalpha_neg)]
+        return hessian
 
-        hessian = [(p - n) / 2. for p, n in zip(dalpha_pos, dalpha_neg)]
+    def compute_hessian(self, dw, trn_X, trn_y, epsilon: float = 0.01):
+        """
+        dw = dw` { L_val(w`, alpha) }
+        w+ = w + eps * dw
+        w- = w - eps * dw
+        hessian = (dalpha { L_trn(w+, alpha) } - dalpha { L_trn(w-, alpha) }) / (2*eps)
+        eps = 0.01 / ||dw||
+        """
+        norm = torch.cat([w.view(-1) for w in dw]).norm()
+        eps = epsilon / norm
+
+        dalpha_pos = self.finite_difference(dw, trn_X, trn_y, eps, wrt='alpha')
+        dalpha_neg = self.finite_difference(dw, trn_X, trn_y, -eps, wrt='alpha')
+        hessian = [(p - n) / (2. * eps) for p, n in zip(dalpha_pos, dalpha_neg)]
         return hessian
