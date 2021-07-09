@@ -19,12 +19,12 @@ class SearchController(pl.LightningModule):
     def __init__(self, net: nn.Module, image_log_path: Path,
                  w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
                  nesterov=False,
-                 alpha_lr=3e-4, alpha_weight_decay=1e-3,
+                 alpha_lr=3e-4, alpha_weight_decay=1e-3, amended_hessian: bool = False,
                  max_epochs: int = 50):
         super().__init__()
         self.save_hyperparameters('image_log_path',
                                   'w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip', 'nesterov',
-                                  'alpha_lr', 'alpha_weight_decay', 'max_epochs')
+                                  'alpha_lr', 'alpha_weight_decay', 'amended_hessian', 'max_epochs')
         self.automatic_optimization = False
 
         self.image_log_path: Path = image_log_path
@@ -38,6 +38,7 @@ class SearchController(pl.LightningModule):
         self.nesterov: bool = nesterov
         self.alpha_lr: float = alpha_lr
         self.alpha_weight_decay: float = alpha_weight_decay
+        self.amended_hessian: bool = amended_hessian
         self.max_epochs: int = max_epochs
 
         self.epoch2normal_alphas: Dict = {}
@@ -59,7 +60,7 @@ class SearchController(pl.LightningModule):
         # phase 2. architect step (alpha)
         alpha_optim.zero_grad()
         w_lr = self.w_scheduler['scheduler'].get_last_lr()[-1]
-        self.architect.unrolled_backward(trn_X, trn_y, val_X, val_y, w_lr, w_optim)
+        self.architect.unrolled_backward(trn_X, trn_y, val_X, val_y, w_lr, w_optim, amended=self.amended_hessian)
         alpha_optim.step()
 
         # phase 1. child network step (w)
