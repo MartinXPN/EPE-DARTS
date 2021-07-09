@@ -5,12 +5,15 @@ import torch
 class Architect:
     """ Compute gradients of alphas """
 
-    def __init__(self, net,  v_net, w_momentum, w_weight_decay):
+    def __init__(self, net,  v_net, w_momentum, w_weight_decay,
+                 normal_none_penalty: float = 0, reduce_none_penalty: float = 0):
         super().__init__()
         self.net = net
         self.v_net = v_net
         self.w_momentum = w_momentum
         self.w_weight_decay = w_weight_decay
+        self.normal_none_penalty: float = normal_none_penalty
+        self.reduce_none_penalty: float = reduce_none_penalty
 
     def virtual_step(self, trn_X, trn_y, lr, w_optim):
         """
@@ -54,7 +57,10 @@ class Architect:
         self.virtual_step(trn_X, trn_y, lr, w_optim)
 
         # calc unrolled loss
+        normal_alphas, reduce_alphas = self.v_net.alpha_weights()
         loss = self.v_net.loss(val_X, val_y)  # L_val(w`)
+        loss += self.normal_none_penalty * sum([alpha[:, -1].sum() for alpha in normal_alphas])
+        loss += self.reduce_none_penalty * sum([alpha[:, -1].sum() for alpha in reduce_alphas])
 
         # compute gradient
         v_alphas = tuple(self.v_net.alphas())

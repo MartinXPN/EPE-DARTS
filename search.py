@@ -22,7 +22,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
          w_grad_clip: float = 5., nesterov: bool = False,
          sparsity: float = 1,
          alpha_lr: float = 3e-4, alpha_weight_decay: float = 1e-3, alphas_path: Optional[str] = None,
-         mask_alphas: bool = False, amended_hessian: bool = False):
+         mask_alphas: bool = False, amended_hessian: bool = False,
+         normal_none_penalty: float = 0, reduce_none_penalty: float = 0):
     """
     :param name: Experiment name
     :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
@@ -51,6 +52,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
     :param alphas_path: Optional path for initial alphas (will be loaded as a torch file)
     :param mask_alphas: Whether to mask alphas and prune them or no
     :param amended_hessian: Whether to use amended hessian computation or no
+    :param normal_none_penalty: Penalize none connections in normal cell
+    :param reduce_none_penalty: Penalize none connections in reduce cell
     """
     hyperparams = locals()
     # set seed
@@ -72,6 +75,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
                              w_grad_clip=w_grad_clip, nesterov=nesterov,
                              alpha_lr=alpha_lr, alpha_weight_decay=alpha_weight_decay, amended_hessian=amended_hessian,
+                             normal_none_penalty=normal_none_penalty, reduce_none_penalty=reduce_none_penalty,
                              max_epochs=epochs)
 
     # callbacks = [

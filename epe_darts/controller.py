@@ -20,11 +20,13 @@ class SearchController(pl.LightningModule):
                  w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
                  nesterov=False,
                  alpha_lr=3e-4, alpha_weight_decay=1e-3, amended_hessian: bool = False,
+                 normal_none_penalty: float = 0, reduce_none_penalty: float = 0,
                  max_epochs: int = 50):
         super().__init__()
         self.save_hyperparameters('image_log_path',
                                   'w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip', 'nesterov',
-                                  'alpha_lr', 'alpha_weight_decay', 'amended_hessian', 'max_epochs')
+                                  'alpha_lr', 'alpha_weight_decay', 'amended_hessian',
+                                  'normal_none_penalty', 'reduce_none_penalty', 'max_epochs')
         self.automatic_optimization = False
 
         self.image_log_path: Path = image_log_path
@@ -48,7 +50,8 @@ class SearchController(pl.LightningModule):
 
         self.net: nn.Module = net
         self.net_copy: nn.Module = copy.deepcopy(net)
-        self.architect = Architect(self.net, self.net_copy, self.w_momentum, self.w_weight_decay)
+        self.architect = Architect(self.net, self.net_copy, self.w_momentum, self.w_weight_decay,
+                                   normal_none_penalty=normal_none_penalty, reduce_none_penalty=reduce_none_penalty)
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         if optimizer_idx != 0:
