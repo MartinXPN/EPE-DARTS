@@ -44,7 +44,7 @@ class Architect:
             for a, va in zip(self.net.alphas(), self.v_net.alphas()):
                 va.copy_(a)
 
-    def unrolled_backward(self, trn_X, trn_y, val_X, val_y, lr, w_optim):
+    def unrolled_backward(self, trn_X, trn_y, val_X, val_y, lr, w_optim, amended: bool = False):
         """ Compute unrolled loss and backward its gradients
 
         :param lr: learning rate for virtual gradient step (same as net lr)
@@ -63,7 +63,7 @@ class Architect:
         dalpha = v_grads[:len(v_alphas)]
         dw = v_grads[len(v_alphas):]
 
-        hessian = self.amended_gradient(dw, trn_X, trn_y)
+        hessian = self.amended_gradient(dw, trn_X, trn_y) if amended else self.compute_hessian(dw, trn_X, trn_y)
 
         # update final gradient = dalpha - lr*hessian
         with torch.no_grad():
