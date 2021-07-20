@@ -14,7 +14,7 @@ from epe_darts.utils import fix_random_seed, ExperimentSetup
 
 
 def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = 'search-epe-darts',
-         search_space: str = 'darts',
+         search_space: str = 'darts', single_level_optimization: bool = False,
          batch_size: int = 64, epochs: int = 50, seed: int = 42,
          print_freq: int = 50, gpus: Union[int, List[int]] = -1, workers: Optional[int] = None,
          init_channels: int = 16, n_layers: int = 8, nodes: int = 4, stem_multiplier: int = 3,
@@ -30,6 +30,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
     :param data_path: Path to the dataset (download in that location if not present)
     :param project: Name of the project (to log in wandb)
     :param search_space: On which search space to perform the search: {darts, nas-bench-201, connect-nas-bench}
+    :param single_level_optimization: Whether to use bi-level or single-level optimization
     :param batch_size: Batch size
     :param epochs: # of training epochs
     :param seed: Random seed
@@ -72,6 +73,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
                               sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce,
                               mask_alphas=mask_alphas)
     model = SearchController(net, experiment.log_dir / 'cell_images',
+                             bi_level_optimization=not single_level_optimization,
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
                              w_grad_clip=w_grad_clip, nesterov=nesterov,
                              alpha_lr=alpha_lr, alpha_weight_decay=alpha_weight_decay, amended_hessian=amended_hessian,
@@ -96,7 +98,7 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
 
     trainer = Trainer(logger=loggers, log_every_n_steps=print_freq,
                       gpus=-1 if torch.cuda.is_available() else None,
-                      max_epochs=epochs, terminate_on_nan=True,
+                      max_epochs=epochs, terminate_on_nan=True, gradient_clip_val=w_grad_clip,
                       callbacks=[
                           # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
                           ModelCheckpoint(dirpath=experiment.model_save_path,

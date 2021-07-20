@@ -17,17 +17,19 @@ from epe_darts.architect import Architect
 
 class SearchController(pl.LightningModule):
     def __init__(self, net: nn.Module, image_log_path: Path,
+                 bi_level_optimization: bool = True,
                  w_lr=0.025, w_momentum=0.9, w_weight_decay: float = 3e-4, w_lr_min: float = 0.001, w_grad_clip=5.,
                  nesterov=False,
                  alpha_lr=3e-4, alpha_weight_decay=1e-3, amended_hessian: bool = False,
                  normal_none_penalty: float = 0, reduce_none_penalty: float = 0,
                  max_epochs: int = 50):
         super().__init__()
-        self.save_hyperparameters('image_log_path',
+        self.save_hyperparameters('image_log_path', 'bi_level_optimization',
                                   'w_lr', 'w_momentum', 'w_weight_decay', 'w_lr_min', 'w_grad_clip', 'nesterov',
                                   'alpha_lr', 'alpha_weight_decay', 'amended_hessian',
                                   'normal_none_penalty', 'reduce_none_penalty', 'max_epochs')
-        self.automatic_optimization = False
+        self.automatic_optimization = not bi_level_optimization
+        self.bi_level_optimization: bool = bi_level_optimization
 
         self.image_log_path: Path = image_log_path
         self.image_log_path.mkdir(parents=True, exist_ok=True)
@@ -54,10 +56,18 @@ class SearchController(pl.LightningModule):
                                    normal_none_penalty=normal_none_penalty, reduce_none_penalty=reduce_none_penalty)
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        if optimizer_idx != 0:
-            return
-
         (trn_X, trn_y), (val_X, val_y) = batch
+
+        # Single level optimization => use standard feedforward + default gradient descend
+        if not self.bi_level_optimization:
+            logits = self.net(trn_X)
+            loss = self.net.criterion(logits, trn_y)
+            prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))
+            self.log('train_loss', loss)
+            self.log('train_top1', prec1)
+            self.log('train_top5', prec5)
+            return loss
+
         w_optim, alpha_optim = self.optimizers()
 
         # phase 2. architect step (alpha)
