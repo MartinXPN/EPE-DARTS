@@ -59,8 +59,10 @@ class Architect:
         # calc unrolled loss
         normal_alphas, reduce_alphas = self.v_net.alpha_weights()
         loss = self.v_net.loss(val_X, val_y)  # L_val(w`)
-        loss += self.normal_none_penalty * sum([alpha[:, -1].sum() for alpha in normal_alphas])
-        loss += self.reduce_none_penalty * sum([alpha[:, -1].sum() for alpha in reduce_alphas])
+
+        # Loss += SUM[ none - mean(others) ]
+        loss += self.normal_none_penalty * sum([(alpha[:, -1] - alpha[:, :-1].mean()).sum() for alpha in normal_alphas])
+        loss += self.reduce_none_penalty * sum([(alpha[:, -1] - alpha[:, :-1].mean()).sum() for alpha in reduce_alphas])
 
         # compute gradient
         v_alphas = tuple(self.v_net.alphas())
