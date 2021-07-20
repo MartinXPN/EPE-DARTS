@@ -221,4 +221,4 @@ class MixedOp(nn.Module):
             x: input
             weights: weight for each operation
         """
-        return sum(w * op(x) for w, op in zip(weights, self._ops))
+        return sum(w * op(x) for w, op in zip(weights, self._ops) if w != 0)
