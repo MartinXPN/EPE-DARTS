@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Dict
 
 import numpy as np
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -43,6 +43,8 @@ class SearchController(pl.LightningModule):
         self.alpha_lr: float = alpha_lr
         self.alpha_weight_decay: float = alpha_weight_decay
         self.amended_hessian: bool = amended_hessian
+        self.normal_none_penalty: float = normal_none_penalty
+        self.reduce_none_penalty: float = reduce_none_penalty
         self.max_epochs: int = max_epochs
 
         self.epoch2normal_alphas: Dict = {}
@@ -62,6 +64,12 @@ class SearchController(pl.LightningModule):
         if not self.bi_level_optimization:
             logits = self.net(trn_X)
             loss = self.net.criterion(logits, trn_y)
+
+            # Loss += SUM[ none - mean(others) ]
+            normal_alphas, reduce_alphas = self.net.alpha_weights()
+            loss += self.normal_none_penalty * sum([(a[:, -1] - a[:, :-1].mean()).sum() for a in normal_alphas])
+            loss += self.reduce_none_penalty * sum([(a[:, -1] - a[:, :-1].mean()).sum() for a in reduce_alphas])
+
             prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))
             self.log('train_loss', loss)
             self.log('train_top1', prec1)

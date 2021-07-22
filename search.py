@@ -98,7 +98,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
 
     trainer = Trainer(logger=loggers, log_every_n_steps=print_freq,
                       gpus=-1 if torch.cuda.is_available() else None,
-                      max_epochs=epochs, terminate_on_nan=True, gradient_clip_val=w_grad_clip,
+                      max_epochs=epochs, terminate_on_nan=True,
+                      gradient_clip_val=w_grad_clip if single_level_optimization else 0,
                       callbacks=[
                           # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
                           ModelCheckpoint(dirpath=experiment.model_save_path,
