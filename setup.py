@@ -26,6 +26,8 @@ setup(
         'aim>=2.1.4',
         'wandb>=0.10.17',
         'knockknock>=0.1.8.1',
+        'hpbandster>=0.7.4',
+        'ConfigSpace>=0.4.19',
     ],
     extras_require={
         'test': ['coverage', 'pytest', 'pytest-cov'],
