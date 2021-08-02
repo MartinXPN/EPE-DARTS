@@ -71,8 +71,8 @@ def main(name: str, dataset: str, data_path: str = 'datasets/', project: str = '
     alpha_normal, alpha_reduce = torch.load(alphas_path) if alphas_path else (None, None)
     net = SearchCNNController(data.input_channels, init_channels, data.n_classes, n_layers, nodes, stem_multiplier,
                               search_space=search_space,
-                              sparsity=sparsity, alpha_normal=alpha_normal, alpha_reduce=alpha_reduce,
-                              mask_alphas=mask_alphas)
+                              sparsity=sparsity, prune_strategy=prune_strategy,
+                              alpha_normal=alpha_normal, alpha_reduce=alpha_reduce, mask_alphas=mask_alphas)
     model = SearchController(net, experiment.log_dir / 'cell_images',
                              bi_level_optimization=not single_level_optimization,
                              w_lr=w_lr, w_momentum=w_momentum, w_weight_decay=w_weight_decay, w_lr_min=w_lr_min,
