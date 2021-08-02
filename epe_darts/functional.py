@@ -1,4 +1,5 @@
 import torch
+from entmax import entmax_bisect
 
 
 def softmax(inputs: torch.Tensor, mask: torch.BoolTensor, dim: int, epsilon: float = 1e-5):
@@ -11,3 +12,10 @@ def softmax(inputs: torch.Tensor, mask: torch.BoolTensor, dim: int, epsilon: flo
 def sigmoid(inputs: torch.Tensor, mask: torch.BoolTensor):
     res = torch.sigmoid(inputs)
     return res * mask.float()
+
+
+def entmax(inputs: torch.Tensor, mask: torch.BoolTensor, dim: int, alpha: float, epsilon: float = 1e-5):
+    res = entmax_bisect(inputs, dim=dim, alpha=alpha, ensure_sum_one=False)
+    masked_res = res * mask.float()
+    masked_sums = masked_res.sum(dim, keepdim=True) + epsilon
+    return masked_res / masked_sums

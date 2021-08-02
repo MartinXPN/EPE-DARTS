@@ -5,10 +5,9 @@ from typing import List
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from entmax import entmax_bisect
 
 from epe_darts import genotypes as gt, ops
-from epe_darts.functional import softmax, sigmoid
+from epe_darts.functional import softmax, sigmoid, entmax
 
 
 class SearchCell(nn.Module):
@@ -122,7 +121,8 @@ class SearchCNNController(pl.LightningModule):
     """ SearchCNN controller supporting multi-gpu """
     def __init__(self, input_channels, init_channels, n_classes, n_layers, n_nodes=4, stem_multiplier=3,
                  search_space='darts',
-                 sparsity=1, alpha_normal=None, alpha_reduce=None, mask_alphas=True, **kwargs):
+                 sparsity=1, prune_strategy='smallest', alpha_normal=None, alpha_reduce=None, mask_alphas=True,
+                 **kwargs):
         super().__init__()
         self.save_hyperparameters()
 
@@ -131,6 +131,7 @@ class SearchCNNController(pl.LightningModule):
         self.n_nodes: int = n_nodes
         self.criterion = nn.CrossEntropyLoss()
         self.sparsity = sparsity
+        self.prune_strategy = prune_strategy
         self.mask_alphas = mask_alphas
 
         # initialize alphas
@@ -172,11 +173,9 @@ class SearchCNNController(pl.LightningModule):
         elif self.sparsity == 1:
             weights_normal = [softmax(alpha, mask, dim=-1) for alpha, mask in zip(self.alpha_normal, self.normal_mask)]
             weights_reduce = [softmax(alpha, mask, dim=-1) for alpha, mask in zip(self.alpha_reduce, self.reduce_mask)]
-        elif not self.mask_alphas:
-            weights_normal = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_normal]
-            weights_reduce = [entmax_bisect(alpha, dim=-1, alpha=self.sparsity) for alpha in self.alpha_reduce]
         else:
-            raise ValueError(f'Does not support sparsity: {self.sparsity} and alpha-masking: {self.mask_alphas}')
+            weights_normal = [entmax(alpha, mask, dim=-1, alpha=self.sparsity) for alpha, mask in zip(self.alpha_normal, self.normal_mask)]
+            weights_reduce = [entmax(alpha, mask, dim=-1, alpha=self.sparsity) for alpha, mask in zip(self.alpha_reduce, self.reduce_mask)]
         return weights_normal, weights_reduce
 
     def raw_alphas(self):
@@ -197,7 +196,7 @@ class SearchCNNController(pl.LightningModule):
             raise ValueError('Cannot remove a connection when the alphas are set to be not masked')
         weights_normal, weights_reduce = self.alpha_weights()
 
-        def remove(alphas: List[torch.Tensor], masks: nn.ParameterList):
+        def remove(alphas: List[torch.Tensor], masks: nn.ParameterList, strategy: str):
             lowest_idx = None
             for i, (alpha, mask) in enumerate(zip(alphas, masks)):
                 alpha_cp = copy.deepcopy(alpha)
@@ -207,10 +206,19 @@ class SearchCNNController(pl.LightningModule):
                 col = cols[row]
                 if lowest_idx is None or alphas[lowest_idx[0]][lowest_idx[1]] > val:
                     lowest_idx = i, (row, col)
-            masks[lowest_idx[0]][lowest_idx[1]] = False
 
-        remove(weights_normal, self.normal_mask)
-        remove(weights_reduce, self.reduce_mask)
+            if strategy == 'smallest':
+                masks[lowest_idx[0]][lowest_idx[1]] = False
+            elif strategy == 'zero':
+                if alphas[lowest_idx[0]][lowest_idx[1]] == 0:
+                    masks[lowest_idx[0]][lowest_idx[1]] = False
+                else:
+                    print('Not pruning any weights as none of them is 0')
+            else:
+                raise ValueError(f'Pruning strategy `{strategy}` is not implemented')
+
+        remove(weights_normal, self.normal_mask, self.prune_strategy)
+        remove(weights_reduce, self.reduce_mask, self.prune_strategy)
 
     def genotype(self, algorithm: str = 'top-k'):
         gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2, algorithm=algorithm)
