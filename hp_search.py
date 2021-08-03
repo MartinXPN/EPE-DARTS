@@ -119,6 +119,7 @@ class Architect(Worker):
         return trainer.callback_metrics
 
     def compute(self, config, budget, **kwargs):
+        epochs = int(budget)
         normals = [[config[f'n{n1}-{n2}'] for n1 in range(n2)] for n2 in range(2, self.n_nodes + 2)]
         reduces = [[config[f'r{r1}-{r2}'] for r1 in range(r2)] for r2 in range(2, self.n_nodes + 2)]
         genotype = f'''Genotype(
@@ -128,7 +129,7 @@ class Architect(Worker):
             reduce_concat=range(2, {self.n_nodes + 2})
         )'''
         print('Genotype:', genotype)
-        res = self.train(genotype=genotype, name=f'exp-{budget}', epochs=int(budget))
+        res = self.train(genotype=genotype, name=f'exp-{epochs}', epochs=int(epochs))
         print('RES:', res)
         return ({
             'loss': -float(res['valid_top1']),
