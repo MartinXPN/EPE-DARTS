@@ -11,7 +11,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 
 from epe_darts import genotypes as gt, ops
-from epe_darts.augment_cnn import DropPathCallback, AugmentCNN
+from epe_darts.augment_cnn import AugmentCNN
 from epe_darts.data import DataModule
 from epe_darts.genotypes import Genotype
 from epe_darts.utils import fix_random_seed, ExperimentSetup
@@ -19,12 +19,12 @@ from epe_darts.utils import fix_random_seed, ExperimentSetup
 
 class Architect(Worker):
     def __init__(self, *args, project: str, dataset: str, search_space: str = 'darts',
-                 data_path: str = 'datasets/', batch_size: int = 96, seed: int = 42,
+                 data_path: str = 'datasets/', batch_size: int = 128, seed: int = 42,
                  lr: float = 0.025, momentum: float = 0.9, weight_decay: float = 3e-4, grad_clip: float = 5.,
                  print_freq: int = 200, gpus: Union[List[int], int] = -1,
-                 init_channels: int = 36, layers: int = 20, n_nodes: int = 4, stem_multiplier: int = 3,
+                 init_channels: int = 16, n_layers: int = 8, n_nodes: int = 4, stem_multiplier: int = 3,
                  workers: Optional[int] = None,
-                 aux_weight: float = 0.4, cutout_length: int = 16, drop_path_prob: float = 0.2, **kwargs):
+                 aux_weight: float = 0, cutout_length: int = 0, **kwargs):
         """
         :param project: Name of the project (to log in wandb)
         :param dataset: CIFAR10 / CIFAR100 / ImageNet / MNIST / FashionMNIST
@@ -39,13 +39,12 @@ class Architect(Worker):
         :param print_freq: Logging frequency
         :param gpus: Lis of GPUs to use or a single GPU (will be ignored if no GPU is available)
         :param init_channels: Initial channels
-        :param layers: # of layers in the network (number of cells)
+        :param n_layers: # of layers in the network (number of cells)
         :param n_nodes: # of nodes in a cell
         :param stem_multiplier: Stem multiplier
         :param workers: # of workers for data loading if None will be os.cpu_count() - 1
         :param aux_weight: Auxiliary loss weight
         :param cutout_length: Cutout length (for augmentation)
-        :param drop_path_prob: Probability of dropping a path
         """
         self.project: str = project
         self.dataset: str = dataset
@@ -60,13 +59,12 @@ class Architect(Worker):
         self.print_freq: int = print_freq
         self.gpus: Union[List[int], int] = gpus
         self.init_channels: int = init_channels
-        self.layers: int = layers
+        self.layers: int = n_layers
         self.n_nodes: int = n_nodes
         self.stem_multiplier: int = stem_multiplier
         self.workers: Optional[int] = workers
         self.aux_weight: float = aux_weight
         self.cutout_length: int = cutout_length
-        self.drop_path_prob: float = drop_path_prob
         super().__init__(*args, **kwargs)
 
     def train(self, name: str, genotype: str, epochs: int):
@@ -83,7 +81,7 @@ class Architect(Worker):
         """)
         genotype: Genotype = gt.from_str(genotype)
 
-        data = DataModule(self.dataset, self.data_path, split_train=False,
+        data = DataModule(dataset=self.dataset, data_dir=self.data_path, split_train=True, return_train_val=False,
                           cutout_length=self.cutout_length, batch_size=self.batch_size, workers=self.workers)
         data.setup()
 
@@ -106,7 +104,7 @@ class Architect(Worker):
                           max_epochs=epochs, terminate_on_nan=True,
                           gradient_clip_val=self.grad_clip,
                           callbacks=[
-                              DropPathCallback(max_epochs=epochs, drop_path_prob=self.drop_path_prob),
+                              # DropPathCallback(max_epochs=epochs, drop_path_prob=self.drop_path_prob),
                               # EarlyStopping(monitor='valid_top1', patience=5, verbose=True, mode='max'),
                               ModelCheckpoint(dirpath=experiment.model_save_path,
                                               filename='model-{epoch:02d}-{valid_top1:.2f}',
@@ -133,7 +131,10 @@ class Architect(Worker):
         print('RES:', res)
         return ({
             'loss': -float(res['valid_top1']),
-            'info': res
+            'info': {
+                'valid_top1': float(res['valid_top1']),
+                'valid_top5': float(res['valid_top5']),
+            },
         })
 
     def get_configspace(self):

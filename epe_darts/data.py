@@ -10,12 +10,13 @@ from epe_darts import preproc
 
 
 class DataModule(LightningDataModule):
-    def __init__(self, dataset, data_dir='datasets', split_train: bool = False,
+    def __init__(self, dataset, data_dir='datasets', split_train: bool = False, return_train_val: bool = True,
                  cutout_length=0, batch_size=64, workers: Optional[int] = None,
                  train_transforms=None, val_transforms=None, test_transforms=None, dims=None):
         self.dataset_name: str = dataset.lower()
         self.data_dir: str = data_dir
         self.split_train: bool = split_train
+        self.return_train_val: bool = return_train_val
         self.train_indices: List[int] = []
         self.valid_indices: List[int] = []
 
@@ -77,7 +78,9 @@ class DataModule(LightningDataModule):
             valid_loader = DataLoader(self.train_data, batch_size=self.batch_size,
                                       sampler=SubsetRandomSampler(self.valid_indices),
                                       num_workers=self.workers, pin_memory=True)
-            return [train_loader, valid_loader]
+            if self.return_train_val:
+                return [train_loader, valid_loader]
+            return train_loader
 
         return DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True,
                           num_workers=self.workers, pin_memory=True)
