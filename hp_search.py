@@ -1,9 +1,10 @@
 from typing import Union, List, Optional
 
-import ConfigSpace as CS
+import ConfigSpace
 import fire
 import hpbandster.core.nameserver as hpns
 import torch
+import wandb
 from hpbandster.core.worker import Worker
 from hpbandster.optimizers import BOHB
 from pytorch_lightning import Trainer
@@ -67,11 +68,11 @@ class Architect(Worker):
         self.cutout_length: int = cutout_length
         super().__init__(*args, **kwargs)
 
-    def train(self, name: str, genotype: str, epochs: int):
+    def train(self, name: str, genotype: str, max_minutes: int):
         """
         :param name: Experiment name
         :param genotype: Cell genotype
-        :param epochs: Number of epochs to train
+        :param max_minutes: Number of hours to train
         """
         hyperparams = locals()
 
@@ -87,7 +88,7 @@ class Architect(Worker):
 
         model = AugmentCNN(data.input_size, data.input_channels, self.init_channels, data.n_classes, self.layers,
                            self.aux_weight, genotype, stem_multiplier=self.stem_multiplier,
-                           lr=self.lr, momentum=self.momentum, weight_decay=self.weight_decay, max_epochs=epochs)
+                           lr=self.lr, momentum=self.momentum, weight_decay=self.weight_decay, max_epochs=max_minutes)
 
         loggers = [
             CSVLogger(experiment.log_dir, name='history'),
@@ -101,7 +102,7 @@ class Architect(Worker):
 
         trainer = Trainer(logger=loggers, log_every_n_steps=self.print_freq,
                           gpus=self.gpus if torch.cuda.is_available() else None,
-                          max_epochs=epochs, terminate_on_nan=True,
+                          max_time={'minutes': max_minutes}, terminate_on_nan=True,
                           gradient_clip_val=self.grad_clip,
                           callbacks=[
                               # DropPathCallback(max_epochs=epochs, drop_path_prob=self.drop_path_prob),
@@ -114,10 +115,10 @@ class Architect(Worker):
                           ])
 
         trainer.fit(model, datamodule=data)
+        wandb.finish()
         return trainer.callback_metrics
 
     def compute(self, config, budget, **kwargs):
-        epochs = int(budget)
         normals = [[config[f'n{n1}-{n2}'] for n1 in range(n2)] for n2 in range(2, self.n_nodes + 2)]
         reduces = [[config[f'r{r1}-{r2}'] for r1 in range(r2)] for r2 in range(2, self.n_nodes + 2)]
         genotype = f'''Genotype(
@@ -127,7 +128,7 @@ class Architect(Worker):
             reduce_concat=range(2, {self.n_nodes + 2})
         )'''
         print('Genotype:', genotype)
-        res = self.train(genotype=genotype, name=f'exp-{epochs}', epochs=int(epochs))
+        res = self.train(genotype=genotype, name=f'exp-{int(budget)}', max_minutes=int(budget))
         print('RES:', res)
         return ({
             'loss': -float(res['valid_top1']),
@@ -152,11 +153,11 @@ class Architect(Worker):
         """
         primitives = ops.SEARCH_SPACE2OPS[self.search_space]
 
-        config_space = CS.ConfigurationSpace()
+        config = ConfigSpace.ConfigurationSpace()
         # Normal cell configuration
         for n2 in range(2, self.n_nodes + 2):
             for n1 in range(n2):
-                config_space.add_hyperparameter(CS.CategoricalHyperparameter(
+                config.add_hyperparameter(ConfigSpace.CategoricalHyperparameter(
                     f'n{n1}-{n2}',
                     [(op, n1) for op in primitives]
                 ))
@@ -164,13 +165,13 @@ class Architect(Worker):
         # Reduction cell configuration
         for r2 in range(2, self.n_nodes + 2):
             for r1 in range(r2):
-                config_space.add_hyperparameter(CS.CategoricalHyperparameter(
+                config.add_hyperparameter(ConfigSpace.CategoricalHyperparameter(
                     f'r{r1}-{r2}',
                     [(op, r1) for op in primitives]
                 ))
 
-        print(config_space)
-        return config_space
+        print(config)
+        return config
 
 
 def main(project: str = 'hyperband', dataset: str = 'CIFAR100'):
@@ -182,7 +183,7 @@ def main(project: str = 'hyperband', dataset: str = 'CIFAR100'):
 
     bohb = BOHB(configspace=w.get_configspace(),
                 run_id='example1', nameserver='127.0.0.1',
-                min_budget=10, max_budget=600)
+                min_budget=5, max_budget=500)
     res = bohb.run(n_iterations=4)
 
     bohb.shutdown(shutdown_workers=True)
