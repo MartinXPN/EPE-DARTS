@@ -88,7 +88,8 @@ class Architect(Worker):
 
         model = AugmentCNN(data.input_size, data.input_channels, self.init_channels, data.n_classes, self.layers,
                            self.aux_weight, genotype, stem_multiplier=self.stem_multiplier,
-                           lr=self.lr, momentum=self.momentum, weight_decay=self.weight_decay, max_epochs=max_minutes)
+                           lr=self.lr, momentum=self.momentum, weight_decay=self.weight_decay,
+                           max_epochs=int(2.5 * max_minutes))  # A gross empirical approximation
 
         loggers = [
             CSVLogger(experiment.log_dir, name='history'),
@@ -181,8 +182,7 @@ def main(project: str = 'hyperband', dataset: str = 'CIFAR100'):
     w = Architect(nameserver='127.0.0.1', run_id='example1', project=project, dataset=dataset)
     w.run(background=True)
 
-    bohb = BOHB(configspace=w.get_configspace(),
-                run_id='example1', nameserver='127.0.0.1',
+    bohb = BOHB(configspace=w.get_configspace(), run_id='example1', nameserver='127.0.0.1',
                 min_budget=5, max_budget=500)
     res = bohb.run(n_iterations=4)
 
