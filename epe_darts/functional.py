@@ -18,4 +18,9 @@ def entmax(inputs: torch.Tensor, mask: torch.BoolTensor, dim: int, alpha: float,
     res = entmax_bisect(inputs, dim=dim, alpha=alpha, ensure_sum_one=False)
     masked_res = res * mask.float()
     masked_sums = masked_res.sum(dim, keepdim=True) + epsilon
-    return masked_res / masked_sums
+    normalized = masked_res / masked_sums
+
+    # Make sure the result is nonzero if the mask has only one True and its value is negative
+    nonzero = normalized + mask.float()
+    nonzero_sums = nonzero.sum(dim, keepdim=True) + epsilon
+    return nonzero / nonzero_sums

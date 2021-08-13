@@ -175,7 +175,7 @@ class Architect(Worker):
         return config
 
 
-def main(project: str = 'hyperband', dataset: str = 'CIFAR100'):
+def main(project: str = 'hyperband', dataset: str = 'CIFAR100', nb_successive_halvings: int = 6):
     NS = hpns.NameServer(run_id='example1', host='127.0.0.1', port=None)
     NS.start()
 
@@ -183,8 +183,8 @@ def main(project: str = 'hyperband', dataset: str = 'CIFAR100'):
     w.run(background=True)
 
     bohb = BOHB(configspace=w.get_configspace(), run_id='example1', nameserver='127.0.0.1',
-                min_budget=5, max_budget=500)
-    res = bohb.run(n_iterations=4)
+                min_budget=5, max_budget=200)
+    res = bohb.run(n_iterations=nb_successive_halvings)
 
     bohb.shutdown(shutdown_workers=True)
     NS.shutdown()
