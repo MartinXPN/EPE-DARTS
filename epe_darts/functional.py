@@ -28,4 +28,5 @@ def entmax(inputs: torch.Tensor, mask: torch.BoolTensor, dim: int, alpha: float,
     mask_sum = mask_sum.unsqueeze(1).repeat(*sz)
 
     nonzero = normalized + (mask & mask_sum).float()
-    return nonzero
+    nonzero_sum = nonzero.sum(dim, keepdim=True)
+    return nonzero / nonzero_sum
