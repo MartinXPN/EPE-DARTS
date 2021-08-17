@@ -191,7 +191,7 @@ class SearchCNNController(pl.LightningModule):
         logits = self.forward(x)
         return self.criterion(logits, y)
 
-    def remove_worst_connection(self) -> None:
+    def remove_worst_connection(self, epsilon: float = 1e-6) -> None:
         if not self.mask_alphas:
             raise ValueError('Cannot remove a connection when the alphas are set to be not masked')
         weights_normal, weights_reduce = self.alpha_weights()
@@ -210,7 +210,7 @@ class SearchCNNController(pl.LightningModule):
             if strategy == 'smallest':
                 masks[lowest_idx[0]][lowest_idx[1]] = False
             elif strategy == 'zero':
-                if alphas[lowest_idx[0]][lowest_idx[1]] == 0:
+                if abs(alphas[lowest_idx[0]][lowest_idx[1]]) < epsilon:
                     masks[lowest_idx[0]][lowest_idx[1]] = False
                 else:
                     print('Not pruning any weights as none of them is 0')

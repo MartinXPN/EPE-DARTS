@@ -21,6 +21,11 @@ def entmax(inputs: torch.Tensor, mask: torch.BoolTensor, dim: int, alpha: float,
     normalized = masked_res / masked_sums
 
     # Make sure the result is nonzero if the mask has only one True and its value is negative
-    nonzero = normalized + mask.float()
-    nonzero_sums = nonzero.sum(dim, keepdim=True) + epsilon
-    return nonzero / nonzero_sums
+    mask_sum = mask.sum(dim=-1)
+    mask_sum = mask_sum == 1
+    sz = list(mask.size())
+    sz[0] = 1
+    mask_sum = mask_sum.unsqueeze(1).repeat(*sz)
+
+    nonzero = normalized + (mask & mask_sum).float()
+    return nonzero
