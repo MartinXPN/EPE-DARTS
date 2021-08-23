@@ -221,8 +221,10 @@ class SearchCNNController(pl.LightningModule):
         remove(weights_reduce, self.reduce_mask, self.prune_strategy)
 
     def genotype(self, algorithm: str = 'top-k'):
-        gene_normal = gt.parse(self.alpha_normal, search_space=self.search_space, k=2, algorithm=algorithm)
-        gene_reduce = gt.parse(self.alpha_reduce, search_space=self.search_space, k=2, algorithm=algorithm)
+        weights_normal, weights_reduce = self.alpha_weights()
+
+        gene_normal = gt.parse(weights_normal, search_space=self.search_space, k=2, algorithm=algorithm)
+        gene_reduce = gt.parse(weights_reduce, search_space=self.search_space, k=2, algorithm=algorithm)
         concat = range(2, 2 + self.n_nodes)  # concat all intermediate nodes
 
         return gt.Genotype(normal=gene_normal, normal_concat=concat,

@@ -4,7 +4,7 @@
     - dag: real ops (can be mixed or discrete, but Genotype has only discrete information itself)
 """
 from collections import namedtuple
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Iterable
 
 import torch
 import torch.nn as nn
@@ -54,7 +54,7 @@ def from_str(s: str) -> Genotype:
     return eval(s)
 
 
-def parse(alpha: nn.ParameterList, search_space: str, k: int = 2,
+def parse(alpha: Iterable[nn.Parameter], search_space: str, k: int = 2,
           algorithm: str = 'top-k') -> List[List[Tuple[str, int]]]:
     """
     parse continuous alpha to discrete gene.
