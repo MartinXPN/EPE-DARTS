@@ -76,6 +76,8 @@ def data_transforms(dataset, cutout_length):
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip()
         ]
+
+        valid_transformations = []
     elif dataset == 'cifar100':
         mean = [x / 255 for x in [129.3, 124.1, 112.4]]
         std = [x / 255 for x in [68.2, 65.4, 70.4]]
@@ -83,6 +85,24 @@ def data_transforms(dataset, cutout_length):
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip()
         ]
+        valid_transformations = []
+
+    elif dataset == 'imagenet':
+        # https://github.com/quark0/darts/blob/f276dd346a/cnn/train_imagenet.py#L113
+        mean = [x / 255 for x in [129.3, 124.1, 112.4]]
+        std = [x / 255 for x in [68.2, 65.4, 70.4]]
+        transformations = [
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
+            transforms.ToTensor(),
+        ]
+        valid_transformations = [
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+        ]
+
     elif dataset == 'imagenet16':
         mean = [x / 255 for x in [122.68, 116.66, 104.01]]
         std = [x / 255 for x in [63.22, 61.26, 65.09]]
@@ -90,6 +110,8 @@ def data_transforms(dataset, cutout_length):
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(16, padding=2)
         ]
+        valid_transformations = []
+
     elif dataset == 'imagenet-1k':
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
@@ -99,12 +121,16 @@ def data_transforms(dataset, cutout_length):
             Lighting(0.1),
             transforms.RandomHorizontalFlip(p=0.5)
         ]
+        valid_transformations = []
+
     elif dataset == 'mnist':
         mean = [0.13066051707548254]
         std = [0.30810780244715075]
         transformations = [
             transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1)
         ]
+        valid_transformations = []
+
     elif dataset == 'fashionmnist':
         mean = [0.28604063146254594]
         std = [0.35302426207299326]
@@ -112,16 +138,18 @@ def data_transforms(dataset, cutout_length):
             transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1),
             transforms.RandomVerticalFlip()
         ]
+        valid_transformations = []
+
     else:
         raise ValueError('not expected dataset = {}'.format(dataset))
 
     normalize = [
         transforms.ToTensor(),
-        transforms.Normalize(mean, std)
+        transforms.Normalize(mean, std),
     ]
 
     train_transform = transforms.Compose(transformations + normalize)
-    valid_transform = transforms.Compose(normalize)
+    valid_transform = transforms.Compose(normalize + valid_transformations)
 
     if cutout_length > 0:
         train_transform.transforms.append(Cutout(cutout_length))
