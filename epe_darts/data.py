@@ -26,7 +26,7 @@ class DataModule(LightningDataModule):
 
         if self.dataset_name == 'cifar10':          dataset_class, n_classes = datasets.CIFAR10, 10
         elif self.dataset_name == 'cifar100':       dataset_class, n_classes = datasets.CIFAR100, 100
-        elif self.dataset_name == 'imgenet':        dataset_class, n_classes = datasets.ImageNet, 1000
+        elif self.dataset_name == 'imagenet':       dataset_class, n_classes = datasets.ImageNet, 1000
         elif self.dataset_name == 'mnist':          dataset_class, n_classes = datasets.MNIST, 10
         elif self.dataset_name == 'fashionmnist':   dataset_class, n_classes = datasets.FashionMNIST, 10
         else:
