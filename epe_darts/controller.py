@@ -57,7 +57,7 @@ class SearchController(pl.LightningModule):
         self.architect = Architect(self.net, self.net_copy, self.w_momentum, self.w_weight_decay,
                                    normal_none_penalty=normal_none_penalty, reduce_none_penalty=reduce_none_penalty)
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
+    def training_step(self, batch, batch_idx):
         (trn_X, trn_y), (val_X, val_y) = batch
 
         # Single level optimization => use standard feedforward + default gradient descend

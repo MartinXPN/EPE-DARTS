@@ -43,7 +43,7 @@ class ExperimentSetup:
 
         if create_latest:
             latest = Path('experiments/latest/').absolute()
-            latest.unlink(missing_ok=True)
+            if latest.exists(): latest.unlink()  # missing_ok=True
             latest.symlink_to(self.experiment_path.absolute(), target_is_directory=True)
 
         print(f'Logging experiments at: `{self.experiment_path.absolute()}`')
